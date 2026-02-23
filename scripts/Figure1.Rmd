@@ -317,12 +317,14 @@ plotSpatial(spe_S3_PC[1],
             img_id = "sample_id", 
             node_size_fix = 1)
 
-saveRDS(spe_S3_PC, "spe_s3_PC_neighbourhoods_K10.rds")
+saveRDS(spe_S3_PC, "spe_S3_PC_neighbourhoods_k10_figureversion_final.rds")
 ```
 
 Visualise neighbourhoods on tissue
 
 ```{r}
+
+number = c("P016_8", "P007_9")
 
 # Marker expression
 plotPixels(images[number],
@@ -355,10 +357,545 @@ plotCells(masks[number],
 
 ```
 
-
 ## Fig1F
 
+```{r}
+library(ggplot2)
+library(ggpubr)
+library(scales)
+library(imcRtools)
+
+meta = data.frame(Row.names = rownames(colData(spe_S3_PC)),
+                  ROI.ID = spe_S3_PC$ROI.ID,
+                  Group = spe_S3_PC$Group,
+                  Location = spe_S3_PC$Location,
+                  k10 = spe_S3_PC$k10,
+                  area = spe_S3_PC$AreaShape_Area)
+
+df <- meta %>% group_by(ROI.ID, k10, Group, Location) %>%
+  reframe(Area = sum(area))
+
+symnum.args <- list(cutpoints = c(0, 0.0001, 0.001, 0.01, 0.05, Inf), symbols = c("****", "***", "**", "*", "ns"))
+```
+
+```{r}
+for (i in 1:10) {
+
+  p1 <- ggplot(
+    subset(df, k10 == i),
+    aes(x = Group, y = Area * 4, fill = Group)
+  ) +
+    geom_boxplot(outlier.shape = NA) +
+    geom_jitter(
+      width = 0.2,
+      size = 2,
+      alpha = 0.7
+    ) +
+    stat_compare_means(
+      aes(group = Group),
+      comparisons = list(c("S3_DF", "S3_R")),
+      method = "t.test",
+      symnum.args = symnum.args
+    ) +
+    labs(
+      title = paste0("NB size per ROI - NB", i),
+      x = "Variable",
+      y = "um nb per mm2"
+    ) +
+    theme_classic()
+
+  print(p1)
+}
+```
+
+## Fig1G
+
+```{r}
+spe_S3_PC <- readRDS("spe_S3_PC_neighbourhoods_k10_figureversion_final.rds")
+
+# Heatmap per group
+spe_s3_PC_DF <- spe_S3_PC[,(spe_S3_PC$Group == "S3_DF")]
+spe_s3_PC_DF <- spe_s3_PC_DF[,(spe_s3_PC_DF$cellcell_anno2 != "Tumor" & spe_s3_PC_DF$cellcell_anno2 != "Undefined")]
+
+spe_s3_PC_R <- spe_S3_PC[,(spe_S3_PC$Group == "S3_R")]
+spe_s3_PC_R <- spe_s3_PC_R[,(spe_s3_PC_R$cellcell_anno2 != "Tumor" & spe_s3_PC_R$cellcell_anno2 != "Undefined")]
+
+library(pheatmap)
+for_plot1 <- prop.table(table(spe_s3_PC_DF$k10, spe_s3_PC_DF$cellcell_anno2), 
+                       margin = 2)
+# Step 2: Convert to a data frame for easier manipulation
+for_plot1_df <- as.data.frame(for_plot1)
+
+# Step 3: Scale each column to a 0-1 range
+for_plot1_df_scaled <- for_plot1_df %>%
+  group_by(Var2) %>%  # assuming Var2 represents columns (i.e., cellcell_anno2 levels)
+  mutate(Freq_scaled = (Freq - min(Freq)) / (max(Freq) - min(Freq))) %>%
+  ungroup()
+
+# Step 4: Optional: convert back to a table if necessary
+for_plot1_scaled <- xtabs(Freq_scaled ~ Var1 + Var2, data = for_plot1_df_scaled)
+
+for_plot2 <- prop.table(table(spe_s3_PC_R$k10, spe_s3_PC_R$cellcell_anno2), 
+                       margin = 2)
+
+# Step 2: Convert to a data frame for easier manipulation
+for_plot2_df <- as.data.frame(for_plot2)
+
+# Step 3: Scale each column to a 0-1 range
+for_plot2_df_scaled <- for_plot2_df %>%
+  group_by(Var2) %>%  # assuming Var2 represents columns (i.e., cellcell_anno2 levels)
+  mutate(Freq_scaled = (Freq - min(Freq)) / (max(Freq) - min(Freq))) %>%
+  ungroup()
+
+# Step 4: Optional: convert back to a table if necessary
+for_plot2_scaled <- xtabs(Freq_scaled ~ Var1 + Var2, data = for_plot2_df_scaled)
+
+pheatmap(for_plot1_scaled, cluster_rows = F, cluster_cols = F, 
+         color = colorRampPalette(c("#005f73", "white", "#ae2012"))(100), 
+         #color = colorRampPalette(c("#e3f2fd", "#42a5f5", "#0d47a1"))(100), 
+         #scale = "column",
+         number_format = "%.2f",  
+         #display_numbers = TRUE,
+         main = "PC_S3_DF")
+pheatmap(for_plot2_scaled, cluster_rows = F, cluster_cols = F, 
+         color = colorRampPalette(c("#005f73", "white", "#ae2012"))(100), 
+         #scale = "column", 
+         main = "PC_S3_R")
+```
+
+## Fig1H
+
+```{r}
+library(BiocParallel)
+library(imcRtools)
+library(dplyr)
+out <- testInteractions(spe, 
+                        group_by = "ID",
+                        label = "celltype_level1", 
+                        colPairName = "delaunay_interaction_graph",
+                        p_threshold = 0.05,
+                        method = "classic", 
+                        #patch_size = 3,
+                        BPPARAM = SerialParam(RNGseed = 221029))
 
 
+saveRDS(out, "out_spatialAnalysis_perROI_delauney_classic_celltype_level1.rds")
+```
 
+Generating heatmaps that display the tally of significant interactions or avoidances of total ROIs
+
+```{r, fig.width= 8, fig.height=8}
+library(ggplot2)
+library(ggpubr)
+library(tidyverse)
+library(hrbrthemes)
+library(viridis)
+library(dplyr)
+library(scales)
+library(pheatmap)
+
+out <- readRDS("out_spatialAnalysis_perROI_delauney_classic_celltype_level1.rds")
+
+df <- as.data.frame(out)
+df$group <- spe$Group[match(out$group_by, spe$ID)]
+df$location <- spe$Location[match(out$group_by, spe$ID)]
+
+df$ct[is.na(df$ct)] <- 0
+df$logct <- log2(df$ct+1)
+
+# Organise data
+
+df.pc <- subset(df, df$location == "Paracortex")
+
+df.pc.filtered <- df.pc %>%
+  group_by(from_label, to_label, group) %>%
+  summarize(
+    count_interact = sum(sigval, na.rm = T)
+  ) %>%
+  dplyr::select(from_label, to_label, group, count_interact)
+
+
+# Subset the data and create a matrix
+data_matrix <- subset(df.pc.filtered, group == "S3_R") %>%
+  dplyr::select(from_label, to_label, count_interact) #%>%
+
+# Reshape the data to wide format to create a matrix
+interaction_matrix <- tidyr::pivot_wider(data_matrix, 
+                                         names_from = to_label, 
+                                         values_from = count_interact, 
+                                         values_fill = list(count_interact = 0))
+
+# Convert to a matrix
+interaction_matrix <- as.data.frame(interaction_matrix)
+
+row.names(interaction_matrix) <- interaction_matrix$from_label  # First column assumed to be from_label
+interaction_matrix <- interaction_matrix[, -1]  # Remove the first column which is now row names
+
+# Plot the heatmap with clustering
+pheatmap(interaction_matrix, 
+         #clustering_distance_rows = "euclidean",
+         #clustering_distance_cols = "euclidean",
+         #clustering_method = "complete",
+         cluster_rows = F, cluster_cols = F,
+         color = colorRampPalette(c("#005f73", "#52b69a", "#ffffb6", "#bb3e03", "#ae2012"))(100),
+         #color = colorRampPalette(c(muted("#005f73"), "white", muted("#ae2012")))(50),
+         main = "S3_R",
+         angle_col = 45)
+
+# Subset the data and create a matrix
+data_matrix <- subset(df.pc.filtered, group == "S3_DF") %>%
+  dplyr::select(from_label, to_label, count_interact) #%>%
+
+# Reshape the data to wide format to create a matrix
+interaction_matrix <- tidyr::pivot_wider(data_matrix, 
+                                         names_from = to_label, 
+                                         values_from = count_interact, 
+                                         values_fill = list(count_interact = 0))
+
+# Convert to a matrix
+interaction_matrix <- as.data.frame(interaction_matrix)
+
+# Optional: Set row names if you want the row names to be the 'from_label'
+row.names(interaction_matrix) <- interaction_matrix$from_label  # First column assumed to be from_label
+interaction_matrix <- interaction_matrix[, -1]  # Remove the first column which is now row names
+
+# Plot the heatmap with clustering
+pheatmap(interaction_matrix, 
+         cluster_rows = F, cluster_cols = F,
+         #clustering_distance_rows = "euclidean",
+         #clustering_distance_cols = "euclidean",
+         #clustering_method = "complete",
+         #color = colorRampPalette(c(muted("#005f73"), "white", muted("#ae2012")))(50),
+         color = colorRampPalette(c("#005f73", "#52b69a", "#ffffb6", "#bb3e03", "#ae2012"))(100), 
+         main = "S3_DF",
+         angle_col = 45)
+```
+## Fig1I
+
+```{r}
+require(gridExtra)
+library(extrafont)
+library(ggraph)
+library(imcRtools)
+library(SpatialExperiment)
+library(cytomapper)
+
+loadfonts(device = "win")
+
+spe <- minDistToCells(spe, 
+                      x_cells = spe$celltype_level1 == "CD8T", 
+                      img_id = "sample_id", name = "Distance_to_CD8")
+spe <- minDistToCells(spe, 
+                      x_cells = spe$celltype_level2 == "CD8_nonNaive", 
+                      img_id = "sample_id", name = "Distance_to_CD8_nonNaive")
+spe <- minDistToCells(spe, 
+                      x_cells = spe$celltype_level2 == "CD8_Naive", 
+                      img_id = "sample_id", name = "Distance_to_CD8_Naive")
+
+spe <- minDistToCells(spe, 
+                      x_cells = spe$celltype_level1 == "DC", 
+                      img_id = "sample_id", name = "Distance_to_DC")
+spe <- minDistToCells(spe, 
+                      x_cells = spe$celltype_level1 == "Macrophages", 
+                      img_id = "sample_id", name = "Distance_to_MO")
+
+spe <- minDistToCells(spe, 
+                      x_cells = spe$celltype_level1 == "Tregs", 
+                      img_id = "sample_id", name = "Distance_to_Treg")
+spe <- minDistToCells(spe, 
+                      x_cells = spe$celltype_level2 == "Tregs_nonNaive", 
+                      img_id = "sample_id", name = "Distance_to_Treg_nonNaive")
+spe <- minDistToCells(spe, 
+                      x_cells = spe$celltype_level2 == "Tregs_Naive", 
+                      img_id = "sample_id", name = "Distance_to_Treg_Naive")
+
+spe <- minDistToCells(spe, 
+                      x_cells = spe$celltype_level1 == "CD4T", 
+                      img_id = "sample_id", name = "Distance_to_CD4")
+spe <- minDistToCells(spe, 
+                      x_cells = spe$celltype_level2 == "CD4_nonNaive", 
+                      img_id = "sample_id", name = "Distance_to_CD4_nonNaive")
+spe <- minDistToCells(spe, 
+                      x_cells = spe$celltype_level2 == "CD4_Naive", 
+                      img_id = "sample_id", name = "Distance_to_CD4_Naive")
+```
+
+Dyad definition
+
+```{r}
+spe$Distance_to_DC_binned <- cut(spe$Distance_to_DC, breaks = c(-Inf, 0, 15, 30, Inf))
+spe$CD8_DC_dyad <- (spe$Distance_to_DC < 15 & spe$celltype_level1 == "CD8T") | (spe$Distance_to_CD8 < 15 & spe$celltype_level1 == "DC")
+#spe$CD8_DC_dyad <- droplevels(spe$CD8_DC_dyad)
+spe$CD8_DC_dyad <- if_else(is.na(spe$CD8_DC_dyad), TRUE, spe$CD8_DC_dyad)
+
+metadata(spe)$color_vectors$CD8_DC_dyad <- setNames(c(   
+                                               "green",  
+                                               "red"),  
+                                             c("TRUE",
+                                               "FALSE"
+                                               ))
+```
+
+Distance to dyad
+
+```{r}
+library(imcRtools)
+spe <- minDistToCells(spe, 
+                      x_cells = spe$CD8_DC_dyad == "TRUE", 
+                      img_id = "sample_id", name = "Distance_to_DC_CD8_dyad")
+
+spe$Distance_to_CD8_DC_dyad_binned <- cut(spe$Distance_to_DC_CD8_dyad, breaks = c(-Inf, 0, 15, 30, Inf))
+```
+
+boxplots
+
+```{R, fig.width=4, fig.height=5.5}
+y <- data.frame(colData(spe)) %>% subset(dyad_anno == "CD8_nonNaive" | dyad_anno == "DC") %>%
+  group_by(Group.location, Group, ROI.ID, dyad_anno) %>%
+  summarize(
+    n_cells = n(),  # Total number of cells per group
+    n_dyads_yes = sum(CD8_DC_dyad == "TRUE"),
+    n_dyads_no = sum(CD8_DC_dyad == "FALSE"),
+  ) %>%
+  mutate(
+    perc_yes = (n_dyads_yes / n_cells) * 100,  # Percentage of Yes cells
+    perc_no = (n_dyads_no / n_cells) * 100     # Percentage of No cells
+  )
+
+# Plots
+
+p <- ggplot(
+  na.omit(subset(y, Group.location %in% c("S3_DF_Paracortex", "S3_R_Paracortex"))),
+  aes(x = Group.location, y = perc_yes, fill = Group)
+) +
+  geom_boxplot(outlier.shape = NA) +   # hide default outliers
+  geom_jitter(
+    width = 0.2,
+    size = 1,
+    alpha = 0.7
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) +
+  ggtitle("CD8_nonNaive-DC") +
+  ylab("cells in dyad (%)") +
+  #ylim(0, 100) +
+  stat_compare_means(
+    comparisons = list(c("S3_DF_Paracortex", "S3_R_Paracortex")),
+    method = "t.test",
+    hide.ns = FALSE
+  ) +
+  facet_wrap(~dyad_anno, scale = "free")
+
+print(p)
+
+y <- data.frame(colData(spe)) %>% subset(dyad_anno == "CD8_Naive" | dyad_anno == "DC") %>%
+  group_by(Group.location, Group, ROI.ID, dyad_anno) %>%
+  summarize(
+    n_cells = n(),  # Total number of cells per group
+    n_dyads_yes = sum(CD8_DC_dyad == "TRUE"),
+    n_dyads_no = sum(CD8_DC_dyad == "FALSE"),
+  ) %>%
+  mutate(
+    perc_yes = (n_dyads_yes / n_cells) * 100,  # Percentage of Yes cells
+    perc_no = (n_dyads_no / n_cells) * 100     # Percentage of No cells
+  )
+
+
+p <- ggplot(
+  na.omit(subset(y, Group.location %in% c("S3_DF_Paracortex", "S3_R_Paracortex"))),
+  aes(x = Group.location, y = perc_yes, fill = Group)
+) +
+  geom_boxplot(outlier.shape = NA) +   # hide default outliers
+  geom_jitter(
+    width = 0.2,
+    size = 1,
+    alpha = 0.7
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) +
+  ggtitle("CD8_Naive-DC") +
+  ylab("cells in dyad (%)") +
+  #ylim(0, 100) +
+  stat_compare_means(
+    comparisons = list(c("S3_DF_Paracortex", "S3_R_Paracortex")),
+    method = "t.test",
+    hide.ns = FALSE
+  ) +
+  facet_wrap(~dyad_anno, scale = "free")
+
+print(p)
+```
+
+CD8 and DCs are physically touching, MOs are within 3 cells (30um) from one another.
+
+```{R, fig.width=6, fig.height=5.5}
+#x <- readRDS("cellDistance_dyads_SPE_V3.rds")
+
+spe$DC_CD8_MO_15 = ifelse(spe$Distance_to_DC_CD8_dyad < 15 & spe$celltype_level1 == "Macrophages", "Yes", "No")
+spe$DC_CD8_MO_30 = ifelse(spe$Distance_to_DC_CD8_dyad < 30 & spe$celltype_level1 == "Macrophages", "Yes", "No")
+
+y <- data.frame(colData(spe)) %>%
+  group_by(Group.location, Location, Group, ROI.ID, celltype_level1) %>%
+  summarize(
+    n_cells = n(),  # Total number of cells per group
+    n_triadcells = sum(CD8_DC_dyad == "Yes"),
+    n_dyads_yes = sum(DC_CD8_MO_15 == "Yes"),
+    n_dyads_no = sum(DC_CD8_MO_15 == "No")
+  ) %>%
+  mutate(
+    perc_yes = (n_dyads_yes / n_cells) * 100,  # Percentage of Yes cells
+    perc_no = (n_dyads_no / n_cells) * 100     # Percentage of No cells
+  )
+
+# Plots
+
+p <- ggplot(
+  na.omit(subset(
+    y,
+    (Group.location %in% c("S3_DF_Paracortex", "S3_R_Paracortex")) &
+      celltype_level1 == "Macrophages"
+  )),
+  aes(x = Group.location, y = perc_yes, fill = Group)
+) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter(
+    width = 0.2,
+    size = 2,
+    alpha = 0.7
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) +
+  ggtitle("CD8-DC + MO") +
+  ylab("%MOs near dyad per ROI (<15 um)") +
+  coord_cartesian(ylim = c(0, 100)) +   # ✅ keeps data for t-test
+  stat_compare_means(
+    comparisons = list(c("S3_DF_Paracortex", "S3_R_Paracortex")),
+    method = "t.test",
+    hide.ns = FALSE
+  )
+
+print(p)
+
+
+y <- data.frame(colData(spe)) %>%
+  group_by(Group.location, Location, Group, ROI.ID, celltype_level1) %>%
+  summarize(
+    n_cells = n(),  # Total number of cells per group
+    n_triadcells = sum(CD8_DC_dyad == "Yes"),
+    n_dyads_yes = sum(DC_CD8_MO_30 == "Yes"),
+    n_dyads_no = sum(DC_CD8_MO_30 == "No")
+  ) %>%
+  mutate(
+    perc_yes = (n_dyads_yes / n_cells) * 100,  # Percentage of Yes cells
+    perc_no = (n_dyads_no / n_cells) * 100     # Percentage of No cells
+  )
+
+p <- ggplot(
+  na.omit(subset(
+    y,
+    (Group.location %in% c("S3_DF_Paracortex", "S3_R_Paracortex")) &
+      celltype_level1 == "Macrophages"
+  )),
+  aes(x = Group.location, y = perc_yes, fill = Group)
+) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter(
+    width = 0.2,
+    size = 2,
+    alpha = 0.7
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) +
+  ggtitle("CD8-DC + MO") +
+  ylab("%MOs near dyad per ROI (<30 um)") +
+  coord_cartesian(ylim = c(0, 100)) +   # ✅ keeps data for t-test
+  stat_compare_means(
+    comparisons = list(c("S3_DF_Paracortex", "S3_R_Paracortex")),
+    method = "t.test",
+    hide.ns = FALSE
+  )
+
+print(p)
+```
+
+## Fig1J
+
+```{r}
+library(ggplot2)
+library(viridis)
+
+spe$outline <- "outline"
+
+metadata(spe)$color_vectors$outline = setNames(c("black"),
+                                                 c("outline"))
+```
+
+```{r}
+for (i in unique(spe$ID[spe$Location == "Paracortex" & (spe$Group == "S3_DF" | spe$Group == "S3_R")])){
+
+number = i
+
+plotCells(masks[number],
+          object = spe, 
+          cell_id = "ObjectNumber", 
+          img_id = "sample_id",
+          colour_by = "celltype_level1",
+          outline_by = "outline",
+          colour = list(celltype_level1 = metadata(spe)$color_vectors$celltype_level1, 
+                        outline = metadata(spe)$color_vectors$outline))
+
+plotCells(masks[number],
+          object = spe, 
+          cell_id = "ObjectNumber", 
+          img_id = "sample_id",
+          colour_by = "Distance_to_CD8_DC_dyad_binned",
+          outline_by = "outline", 
+          colour = list(outline = metadata(spe)$color_vectors$outline))
+
+plotPixels(images[number], mask = masks[number],
+           object = spe,
+           colour_by = c("CD11c", "CD8a", "CD68"), 
+           cell_id = "ObjectNumber", 
+           img_id = "sample_id",
+           outline_by = "Distance_to_CD8_DC_dyad_binned",
+           bcg = list(CD11c = c(0, 12, 1.2),
+                      `CD8a` = c(0, 6, 1),
+                      CD68 = c(0, 13, 1)
+                      ),
+           colour = list(CD11c = c("black","green"),
+                         CD8a = c("black","red"), 
+                         CD68 = c("black","cyan")
+                         ))
+
+plotPixels(images[number],
+           colour_by = c("CD11c", "CD8a", "CD68"), 
+           cell_id = "ObjectNumber", 
+           img_id = "sample_id",
+           bcg = list(CD11c = c(0, 12, 1.2),
+                      `CD8a` = c(0, 6, 1),
+                      CD68 = c(0, 13, 1)
+                      ),
+           colour = list(CD11c = c("black","green"),
+                         CD8a = c("black","red"), 
+                         CD68 = c("black","cyan")
+                         ))
+
+plotPixels(images[number], 
+           colour_by = c("CD8a"),
+           bcg = list(`CD8a` = c(0, 6, 1)),
+           colour = list(CD8a = c("black","red")))
+
+plotPixels(images[number], 
+           colour_by = c("CD11c"),
+           bcg = list(`CD11c` = c(0, 12, 1.25)),
+           colour = list(CD11c = c("black","green")))
+
+plotPixels(images[number], 
+           colour_by = c("CD68"),
+           bcg = list(`CD68` = c(0, 13, 1)),
+           colour = list(CD68 = c("black","cyan")))
+
+}
+dev.off()
+```
 
