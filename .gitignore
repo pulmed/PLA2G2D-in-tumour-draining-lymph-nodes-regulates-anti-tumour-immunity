@@ -1,0 +1,8 @@
+# Ignore environment files and checkpoints
+.env
+__pycache__/
+.ipynb_checkpoints/
+
+# Ignore outputs
+results/*
+!results/.gitkeep
