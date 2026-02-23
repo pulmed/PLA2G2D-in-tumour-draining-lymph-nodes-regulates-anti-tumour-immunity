@@ -1,0 +1,447 @@
+## DSP data
+
+```{r}
+averageCounts = read.delim("counts_Q3norm_uniqueSamples.txt", row.names = 1)
+```
+
+```{r}
+sampleInfo = data.frame(SampleID = colnames(averageCounts))
+
+sampleInfo <- sampleInfo %>%
+  mutate(Celltype = case_when(
+    grepl("CD68", SampleID) ~ "CD68",
+    grepl("CD11c", SampleID) ~ "CD11c",
+    grepl("CD8", SampleID) ~ "CD8",
+    TRUE ~ NA_character_  # or you can leave it empty if you don't want NA values
+  ))
+
+sampleInfo <- sampleInfo %>%
+  mutate(Group = case_when(
+    grepl("_DF", SampleID) ~ "DF",
+    grepl("_R", SampleID) ~ "R",
+    TRUE ~ NA_character_  # or you can leave it empty if you don't want NA values
+  ))
+
+sampleInfo <- sampleInfo %>%
+  mutate(PatientID = str_extract(SampleID, "P\\d{3}"))
+
+df <- merge(sampleInfo, t(averageCounts), by.x = "SampleID", by.y = "row.names")
+```
+
+```{r}
+results = read.delim("LMM_DFxR.txt")
+```
+## Fig2B
+
+CD11c
+
+```{r, fig.width = 3.5, fig.height = 8}
+#BiocManager::install("EnhancedVolcano")
+library(EnhancedVolcano)
+
+df <- subset(results, results$Subset == "CD11c")
+
+##### Define custom colors #####
+# set the base colour as 'black'
+keyvals <- rep('#d3d3d3', nrow(df))
+
+#set the base name/label as 'NS'
+names(keyvals) <- rep('NS', nrow(df))
+
+# modify keyvals for variables with fold change > 1
+keyvals[which(df$Estimate > 0 &
+                df$Pr...t.. < 0.1)] <- '#ba181b' #color code
+names(keyvals)[which(df$Estimate > 0 &
+                       df$Pr...t.. < 0.1)] <- 'DF' #Upregulated genes
+
+# modify keyvals for variables with fold change < -1
+keyvals[which(df$Estimate < 0 &
+                df$Pr...t.. < 0.1)] <- '#1a659e' #color code
+names(keyvals)[which(df$Estimate < 0 &
+                       df$Pr...t.. < 0.1)] <- 'R' #Downregulated genes
+
+##### Produce the plot #####
+ID <- "CD11c" 
+genes <- c("APOC1", "LAMP3", "SREBF2", "IRF1", "XCL1", "CSF1", "RGS1", "Ly75", "IL4I1", "PLA2G2D", "APOE", "CXCL9", "GPNMB", "SOCS1", "CXCL13", "UBD", "IL18", "CHIT1", "DNASE2", "STAT1", "CTSA", "XCL1", "LILRB4", "SLC36A1", "SLC12A4",  "MAP2K3", "IRF4", "ENPP2", "ADAMDEC1", "TRIM6", "IFIH1", "BATF", "C2", "PFKP", "TRAF6", "BCL2L11", "HLA-F", "PTGDS", "IL27RA", "IL21R", "PECAM1", "SLC31A1", "CD48", "SLC9A6", "CD36", "CCL14", "LYVE1", "MARCO", "CXCL2", "AOC3", "TNFSF311", "CD209", "IL1B", "CXCL12", "ACTA2", "STAB2", "TAGLN")
+
+volcano <- EnhancedVolcano(df,
+                           lab = df$Gene,
+                           title = ID,
+                           x = "Estimate",
+                           y = "Pr...t..",
+                           pCutoff = 0.05,
+                           FCcutoff = 0,
+                           selectLab = genes, #Show only these labels
+                           drawConnectors = T, #Draw a connecting line to your label
+                           arrowheads = F,
+                           widthConnectors = 0.1, 
+                           colConnectors = "black",
+                           #boxedLabels = TRUE, #Draw a box around your label
+                           #legendVisible = F, #standard is TRUE
+                           colAlpha = 0.6, #transparency of points
+                           #xlim = c(-4.5, 4.5),  
+                           ylim = c(0,5.6), 
+                           pointSize = 1.5, #Define size of the dots
+                           labSize = 2, #Define size of the labels
+                           gridlines.minor = FALSE, #Add minor grid to background
+                           gridlines.major = FALSE, #Add major grid to background
+                           cutoffLineType = 'dashed', #Add cutoff lines for Log2Fold/Pval
+                           cutoffLineCol = "#d3d3d3",
+                           border = "full",
+                           borderColour = "black",
+                           borderWidth = 0.5,
+                           colCustom = keyvals #Add custom colors for your values as defined above 
+                           ) #+ coord_flip()
+                         
+print(volcano)
+```
+
+CD68
+
+```{r, fig.width = 5, fig.height = 7}
+#BiocManager::install("EnhancedVolcano")
+library(EnhancedVolcano)
+
+df <- subset(results, results$Subset == "CD68")
+
+##### Define custom colors #####
+# set the base colour as 'black'
+keyvals <- rep('#d3d3d3', nrow(df))
+
+#set the base name/label as 'NS'
+names(keyvals) <- rep('NS', nrow(df))
+
+# modify keyvals for variables with fold change > 1
+keyvals[which(df$Estimate > 0 &
+                df$Pr...t.. < 0.1)] <- '#ba181b' #color code
+names(keyvals)[which(df$Estimate > 0 &
+                       df$Pr...t.. < 0.1)] <- 'DF' #Upregulated genes
+
+# modify keyvals for variables with fold change < -1
+keyvals[which(df$Estimate < 0 &
+                df$Pr...t.. < 0.1)] <- '#1a659e' #color code
+names(keyvals)[which(df$Estimate < 0 &
+                       df$Pr...t.. < 0.1)] <- 'R' #Downregulated genes
+
+##### Produce the plot #####
+ID <- "CD68" 
+genes <- c("TYR", "PLA2G2D", "ADAMDEC1", "CXCL9", "SOX10", "S100A1", "UBD", "FN1", "APOD", "TNFRSF9", "LYZ", "C5AR1", "LGALS1", "NR1H3", "SPP1", "CHI3L1", "DNASE2", "EDNRB", "CCND1", "IL4I1", "MMP14", "IL18", "NGFR", "IRF1", "CSF2RA", "SOCS3", "LGALS3", "ENPP2", "APOL2", "CXCL13", "LY75", "ATOX1", "HLA-F", "LDHA", "PSMA5", "BATF", "TAP1", "HLA-DMB", "IKBKG", "UBAC1", "LILRB4", "CD274", "IDO1", "IGSF8", "ICOS", "PASK", "ZFAND5", "ENOSF1", "C1R", "IL21R", "TNFAIP3", "AHR", "SLAMF1", "AXL", "CLEC4G", "CD163", "MARCO", "CD5L", "CD163L1", "CXCL12", "CP", "CCL21", "SIGLEC1", "CD209", "CLEC4M", "TIMD4", "RNASE1", "ENOSF1", "C1R", "DGKD", "PDE4A", "APOBR", "TGFA", "MAF", "PTGES"  )
+
+volcano <- EnhancedVolcano(df,
+                           lab = df$Gene,
+                           title = ID,
+                           x = "Estimate",
+                           y = "Pr...t..",
+                           pCutoff = 0.05,
+                           FCcutoff = 0,
+                           selectLab = genes, #Show only these labels
+                           drawConnectors = T, #Draw a connecting line to your label
+                           arrowheads = F,
+                           widthConnectors = 0.1, 
+                           colConnectors = "black",
+                           #boxedLabels = TRUE, #Draw a box around your label
+                           #legendVisible = F, #standard is TRUE
+                           colAlpha = 0.6, #transparency of points
+                           #xlim = c(-4.5, 4.5),  
+                           ylim = c(0,5.6), 
+                           pointSize = 1.5, #Define size of the dots
+                           labSize = 2, #Define size of the labels
+                           gridlines.minor = FALSE, #Add minor grid to background
+                           gridlines.major = FALSE, #Add major grid to background
+                           cutoffLineType = 'dashed', #Add cutoff lines for Log2Fold/Pval
+                           cutoffLineCol = "#d3d3d3",
+                           border = "full",
+                           borderColour = "black",
+                           borderWidth = 0.5,
+                           colCustom = keyvals #Add custom colors for your values as defined above 
+                           ) #+ coord_flip()
+                                                     
+print(volcano)
+```
+
+## Fig2C - Left
+
+Dendritic cells
+
+```{r}
+library(dplyr)
+library(msigdbr)
+library(clusterProfiler)
+library(org.Hs.eg.db)
+library(enrichplot)
+library(xlsx)
+library(reshape2)
+
+results = read.delim("LMM_DFxR.txt")
+
+df <- subset(results, results$Subset == "CD11c")
+
+##  feature 1: LOGF2
+    geneList <- df$Estimate
+
+##  feature 2: named vector
+    names(geneList) <- df$Gene
+
+##  feature 3: decreasing order
+    geneList <- sort(geneList, decreasing = TRUE)
+    head(geneList)
+    class(geneList) #should be numeric
+
+##  Create a LogF2 cut-off e.g. > 1
+    gene <- geneList[abs(geneList) > 1] #Change log2fold cutoff here
+    head(gene)
+
+####### Creating a custom pathway #############################################################
+##  Make a tab-delimited file for your custom pathways
+##  [First column: name of pathway][Following columns: genes belonging to pathway]
+## !!! Make sure this is in the right species format !!!
+
+    path <- read.xlsx("2020-Nature-Merad_DC-signatures_adjusted.xlsx", sheetIndex = 1)
+    
+    path.melt = data.frame(signature = path$Signature,
+                           gene = path$Genes)
+
+####### Running the GSEA #############################################################
+
+    em <- GSEA(geneList = geneList,
+                    exponent = 1, #standard
+                    minGSSize = 10, #Minimum amount of genes in one geneset
+                    maxGSSize = 1000, #Maximum amount of genes in one geneset
+                    pAdjustMethod = "BH", 
+                    TERM2GENE = path.melt, #genesets
+                    pvalueCutoff = 1, #put 1 to see all pathways
+                    verbose = TRUE)
+ 
+##  Save your GSEA output
+    setwd("YOUR_PATH") #where you will write your file
+
+    head(as.data.frame(cbind(em@result$ID, em@result$pvalue, em@result$p.adjust, em@result$NES)))
+    xy <- as.data.frame(cbind(em@result$ID, em@result$pvalue, em@result$p.adjust, em@result$NES))
+    colnames(xy) <- c("Pathway", "P-value", "Adj. P-value", "NES")
+    write.table(xy, "FILENAME.txt", sep = "\t", row.names = F, col.names = T)
+    
+    ####### Plotting your GSEA analysis #############################################################
+
+## Run the function
+        GSEAplot<-function(x){
+          gseaplot2(x = em, 
+                    geneSetID =x,
+                    base_size = 20,
+                    rel_heights = c(1.5, 0.5, 1),
+                    title=em$ID[x],
+                    color="red",
+                    subplots = 1:3,
+                    ES_geom = "line",
+                    pvalue_table=T)
+        }
+    
+    GSEAplot(1)
+```
+
+Marcophages
+
+```{r}
+library(xlsx)
+library(reshape2)
+results = read.delim("LMM_DFxR.txt")
+df <- subset(results, results$Subset == "CD68")
+
+##  feature 1: LOGF2
+    geneList <- df$Estimate
+
+##  feature 2: named vector
+    names(geneList) <- df$Gene
+
+##  feature 3: decreasing order
+    geneList <- sort(geneList, decreasing = TRUE)
+    head(geneList)
+    class(geneList) #should be numeric
+
+##  Create a LogF2 cut-off e.g. > 1
+    gene <- geneList[abs(geneList) > 1] #Change log2fold cutoff here
+    head(gene)
+
+####### Creating a custom pathway #############################################################
+##  Make a tab-delimited file for your custom pathways
+##  [First column: name of pathway][Following columns: genes belonging to pathway]
+## !!! Make sure this is in the right species format !!!
+
+    path <- read.xlsx("Nat Comm 2024_TAM atlas.xlsx", sheetIndex = 1)
+    colnames(path) = path[1,]   
+    path <- path[-1,]
+    
+    path.select <- subset(path, path$avg_log2FC > 0.5 & path$p_val_adj < 0.05)
+    
+    path.melt = melt(t(path))
+    
+    path.melt = data.frame(signature = path.select$cluster,
+                           gene = path.select$gene)
+
+####### Running the GSEA #############################################################
+
+    em <- GSEA(geneList = geneList,
+                    exponent = 1, #standard
+                    minGSSize = 10, #Minimum amount of genes in one geneset
+                    maxGSSize = 1000, #Maximum amount of genes in one geneset
+                    pAdjustMethod = "BH", 
+                    TERM2GENE = path.melt, #genesets
+                    pvalueCutoff = 1, #put 1 to see all pathways
+                    verbose = TRUE)
+ 
+##  Save your GSEA output
+    #setwd("YOUR_PATH") #where you will write your file
+
+    head(as.data.frame(cbind(em@result$ID, em@result$pvalue, em@result$p.adjust, em@result$NES)))
+    xy <- as.data.frame(cbind(em@result$ID, em@result$pvalue, em@result$p.adjust, em@result$NES))
+    colnames(xy) <- c("Pathway", "P-value", "Adj. P-value", "NES")
+    #write.table(xy, "FILENAME.txt", sep = "\t", row.names = F, col.names = T)
+    
+        ####### Plotting your GSEA analysis #############################################################
+
+## Run the function
+        GSEAplot<-function(x){
+          gseaplot2(x = em, 
+                    geneSetID =x,
+                    base_size = 20,
+                    rel_heights = c(1.5, 0.5, 1),
+                    title=em$ID[x],
+                    color="red",
+                    subplots = 1:3,
+                    ES_geom = "line",
+                    pvalue_table=T)
+        }
+    
+    GSEAplot(1)
+``` 
+
+## Fig2C - Right
+
+```{r, fig.width = 5, fig.height = 4}
+library(xlsx)
+library(ggplot2)
+library(ggpubr)
+
+df <- read.xlsx("NESscores_signatures.xlsx", sheetIndex = 1)
+
+df$LogP = -log(df$adj.P)
+df$up = ifelse(df$NES < 0, "R", "DF")
+df$NES = -1*df$NES
+df$ID = paste0(df$NES,"_", df$Cluster.ID)
+
+p1 <- ggballoonplot(
+  subset(df, Sig.Select == "DC_combined"),
+  x = "NES",
+  y = "ID", facet.by = "Celltype",
+  size = "LogP", fill = "NES", size.range = c(1,6)) +
+  scale_fill_fermenter(n.breaks = 9, palette = "RdYlBu") +  # Set min and max for the fill color
+  coord_fixed(ratio = 1)  # Adjust the ratio as needed
+
+p2 <- ggballoonplot(
+  subset(df, Sig.Select == "Nat Comm 2024_TAM atlas"),
+  x = "NES",
+  y = "ID", facet.by = "Celltype",
+  size = "LogP", fill = "NES", size.range = c(1,6)) +
+  scale_fill_fermenter(n.breaks = 9, palette = "RdYlBu") +  # Set min and max for the fill color
+  coord_fixed(ratio = 1)  # Adjust the ratio as needed
+
+p3 <- ggballoonplot(
+  subset(df, Sig.Select == "Pan-cancer-TIL-atlas-Science_CD8-signatures"),
+  x = "NES",
+  y = "ID", facet.by = "Celltype",
+  size = "LogP", fill = "NES", size.range = c(1,6), ) +
+  scale_fill_fermenter(n.breaks = 9, palette = "RdYlBu") +  # Set min and max for the fill color
+  coord_fixed(ratio = 1)  # Adjust the ratio as needed
+
+print(p1)
+print(p2)
+print(p3)
+```
+
+## Fig2D - Left
+
+```{r, fig.width=2, fig.height=5}
+# Load libraries
+library(ggplot2)
+library(dplyr)
+
+# Subset CD11c
+df_cd11c <- subset(results, Subset == "CD11c") %>%
+  dplyr::select(Gene, Estimate) %>%
+  arrange(Estimate) %>%           # Sort by log2FC ascending
+  slice(1:200) %>%                # Keep only top 100 lowest
+  mutate(
+    highlight = Gene == "PLA2G2D",                  # Highlight gene
+    Gene = factor(Gene, levels = Gene)             # Preserve order for plotting
+  )
+
+ggplot(df_cd11c, aes(x = Estimate, y = Gene, fill = highlight)) +
+  geom_col() +
+  scale_fill_manual(values = c("TRUE" = "red", "FALSE" = "grey70"), guide = "none") +
+  theme(
+    axis.text.y  = element_blank(),
+    axis.ticks.y = element_blank(),
+    axis.title.y = element_blank()
+  ) +
+  scale_y_discrete(limits = rev) +   # Reverse order so smallest log2FC is at bottom
+  scale_x_reverse() +
+  labs(
+    title = "CD11c",
+    x = "Log2 Fold Change",
+    y = "increased in recurrence"
+  )
+
+# Subset CD11c
+df_cd68 <- subset(results, Subset == "CD68") %>%
+  dplyr::select(Gene, Estimate) %>%
+  arrange(Estimate) %>%           # Sort by log2FC ascending
+  slice(1:200) %>%                # Keep only top 100 lowest
+  mutate(
+    highlight = Gene == "PLA2G2D",                  # Highlight gene
+    Gene = factor(Gene, levels = Gene)             # Preserve order for plotting
+  )
+
+ggplot(df_cd68, aes(x = Estimate, y = Gene, fill = highlight)) +
+  geom_col() +
+  scale_fill_manual(values = c("TRUE" = "red", "FALSE" = "grey70"), guide = "none") +
+  theme(
+    axis.text.y  = element_blank(),
+    axis.ticks.y = element_blank(),
+    axis.title.y = element_blank()
+  ) +
+  scale_y_discrete(limits = rev) +   # Reverse order so smallest log2FC is at bottom
+  scale_x_reverse() +
+  labs(
+    title = "CD68",
+    x = "Log2 Fold Change",
+    y = "increased in recurrence"
+  )
+```
+
+## Fig2D - Right
+
+```{r, fig.width=4, fig.height=5}
+
+gene = "PLA2G2D"
+
+p <- df %>%
+  ggplot(aes(x = Group, y = .data[[gene]], fill = Group)) +
+  
+  geom_boxplot(width = 0.6, outlier.shape = NA) +
+  
+  geom_jitter(
+    width = 0.15,
+    size = 1,
+    alpha = 0.9
+  ) +
+  
+  scale_fill_manual(values = c("#248277", "#8c1c13")) +
+  coord_cartesian(ylim = c(0, 80)) +
+  
+  facet_wrap(~ Celltype, scales = "free") +
+  
+  theme_classic() +
+  theme(legend.position = "none") +
+  labs(title = gene, x = "", y = "Normalized Expression")
+print(p)
+
+```
