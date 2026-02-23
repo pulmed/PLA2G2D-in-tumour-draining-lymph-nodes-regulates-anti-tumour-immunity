@@ -1,0 +1,364 @@
+# Load Data
+
+```{r}
+spe <- readRDS("spe_TDLN_Mela.rds")
+
+images = readRDS("images_spe.rds")
+masks = readRDS("masks_spe.rds")
+    
+```
+
+# Fig1B
+
+```{r, fig.width=6, fig.height=5}
+
+library(dittoSeq)
+dittoDimPlot(spe, 
+                   var = "celltype_level2", 
+                   reduction.use = "UMAP_ki67Corrected", 
+                   size = 0.2, opacity = 1, 
+                   do.label = FALSE) +
+  scale_color_manual(values = metadata(spe)$color_vectors$celltype_level2) +
+  theme(legend.title = element_blank()) +
+  ggtitle("Celltype-annotation")
+
+```
+
+# Fig1C
+
+```{r}
+
+# Define cell phenotype markers 
+type_markers <- c("CD3", "CD4", "CD8a", "CD20", "SOX10", "CD45", "CSK-III", 
+                  "CD31", "D2-40", "CD11c", "CD15", "CD68", "CD169", "CD163", 
+                  "CD14", "Coll-I", "FoxP3", "CD45RA", "TOX", "TCF1", "Ki-67", "HLA-DR", "PD-1", "CTLA-4", "GranzymeB")
+state_markers = NA
+
+# Add to spe
+rowData(spe)$marker_class <- ifelse(rownames(spe) %in% type_markers, "type",
+                                    ifelse(rownames(spe) %in% state_markers, "state", 
+                                    "other"))
+
+```
+
+```{r}
+library(ComplexHeatmap)
+library(circlize)
+library(tidyverse)
+library(imcRtools)
+library(cytomapper)
+library(scuttle)
+set.seed(22)
+
+### 1. Heatmap bodies ###
+
+# Heatmap body color 
+col_exprs <- colorRamp2(c(0,1,2,3), 
+                        c("#440154FF","#20938CFF",
+                          "#6ACD5AFF","#FDE725FF"))
+
+# By cell type markers
+celltype_mean <- aggregateAcrossCells(as(spe, "SingleCellExperiment"),  
+                     ids = spe$celltype_level2, 
+                     statistics = "mean",
+                     use.assay.type = "exprs", 
+                     subset.row = rownames(spe)[rowData(spe)$marker_class == "type"])
+
+h_type <- Heatmap(scale(t(assay(celltype_mean, "exprs"))),
+        column_title = "markers",
+        col=colorRamp2(c(-3, 0, 3), c("#005f73", "white", "#ae2012")),
+        name= "Z-score", cluster_rows = T,
+        show_row_names = TRUE, 
+        show_column_names = TRUE)
+
+x <- Heatmap(scale(t(assay(celltype_mean, "exprs"))),
+        column_title = "markers",
+        col= col_exprs, 
+        name= "mean exprs",
+        show_row_names = TRUE, 
+        show_column_names = TRUE)
+
+### 2.1  Metadata features
+
+anno <- colData(celltype_mean) %>% as.data.frame %>% dplyr::select(celltype_level2, ncells)
+
+# Proportion of indication per celltype
+indication <- unclass(prop.table(table(spe$celltype_level2, spe$Group), margin = 1))
+
+# Number of contributing patients per celltype
+cluster_PID <- colData(spe) %>% 
+    as.data.frame() %>% 
+    dplyr::select(celltype_level2, Patient.ID) %>% 
+    group_by(celltype_level2) %>% table() %>% 
+    as.data.frame()
+
+n_PID <- cluster_PID %>% 
+    filter(Freq>0) %>% 
+    group_by(celltype_level2) %>% 
+    count(name = "n_PID") %>% 
+    column_to_rownames("celltype_level2")
+
+# Create HeatmapAnnotation objects
+ha_anno <- HeatmapAnnotation(celltype_level2 = anno$celltype_level2,
+                            border = TRUE, 
+                            gap = unit(1,"mm"),
+                            col = list(celltype_level2 = metadata(spe)$color_vectors$celltype_level2),
+                            which = "row")
+
+ha_meta <- HeatmapAnnotation(n_cells = anno_barplot(anno$ncells, width = unit(10, "mm")),
+                            n_PID = anno_barplot(n_PID, width = unit(10, "mm")),
+                            indication = anno_barplot(indication,width = unit(10, "mm"),
+                                                      gp = gpar(fill = metadata(spe)$color_vectors$Group)),
+                            border = TRUE, 
+                            annotation_name_rot = 90,
+                            gap = unit(1,"mm"),
+                            which = "row")
+
+### 2.2 Spatial features
+
+# Add number of neighbors to spe object (saved in colPair)
+spe$n_neighbors <- countLnodeHits(colPair(spe, "neighborhood"))
+
+# Select spatial features and average over celltypes
+spatial <- colData(spe) %>% 
+    as.data.frame() %>% 
+    dplyr::select(AreaShape_Area, celltype_level2, n_neighbors)
+
+spatial <- spatial %>% 
+    dplyr::select(-celltype_level2) %>% 
+    aggregate(by = list(celltype_level2 = spatial$celltype_level2), FUN = mean) %>% 
+    column_to_rownames("celltype_level2")
+
+# Create HeatmapAnnotation object
+ha_spatial <- HeatmapAnnotation(
+    area = spatial$AreaShape_Area,
+    n_neighbors = spatial$n_neighbors,
+    border = TRUE,
+    gap = unit(1,"mm"),
+    which = "row")
+
+### 3. Plot rich heatmap ###
+
+# Create HeatmapList object
+h_list <- 
+    h_type +
+    ha_anno +
+    ha_spatial +
+    ha_meta
+
+# Add customized legend for anno_barplot()
+lgd <- Legend(title = "indication", 
+              at = colnames(indication), 
+              legend_gp = gpar(fill = metadata(spe)$color_vectors$Group))
+
+# Plot
+draw(h_list,annotation_legend_list = list(lgd))
+
+```
+
+## Fig 1D
+
+```{r}
+library(data.table)
+library(dplyr)
+library(tidyr)
+library(rstatix)
+
+df <- unique(as.data.frame(table(spe$ID, spe$celltype_level2)))
+colnames(df) <- c("ID", "celltype", "Freq")
+
+df$Patient.ID <- spe$Patient.ID[match(df$ID, spe$ID)]
+df$Group <- spe$Group[match(df$ID, spe$ID)]
+df$Location <- spe$Location[match(df$ID, spe$ID)]
+df$Group.location <- spe$Group.location[match(df$ID, spe$ID)]
+df$Cells_per_mm2 <- df$Freq * 4
+df <- subset(df, Patient.ID != "Patient01_Ctrl")
+```
+
+```{r,  fig.width=5, fig.height=7}
+vol.input <- df %>%
+  group_by(ID, celltype, Location, Group) 
+
+
+ls <- list()
+
+for(cell in unique(spe$celltype_level2)){
+  
+  filtered_data <- subset(vol.input, celltype == cell)
+  
+  pwc <- filtered_data %>%
+  group_by(Location) %>%
+  t_test(Cells_per_mm2 ~ Group)
+  
+  pwc.filter <- subset(pwc, group1 == "S3_DF" & group2 == "S3_R")
+  pwc.filter$celltype <- cell
+  
+  ls[[cell]] <- pwc.filter
+}
+
+ls.2 <- rbindlist(ls, fill=TRUE)
+ls.2$Location.celltype <- paste0(ls.2$Location,"_", ls.2$celltype) 
+
+counts <- vol.input %>%
+  group_by(celltype, Location, Group) %>%
+  dplyr::summarise(counts = mean(Cells_per_mm2))
+
+counts_DF = subset(counts, Group == "S3_DF")
+counts_DF$Location.celltype <- paste0(counts_DF$Location,"_", counts_DF$celltype) 
+
+counts_R = subset(counts, Group == "S3_R")
+counts_R$Location.celltype <- paste0(counts_R$Location,"_", counts_R$celltype)
+
+###
+
+# Use the left_join function to merge the dataframes based on Location.celltype
+merged_df <- left_join(ls.2, counts_DF, by = "Location.celltype")
+
+# Update the ls.2$group1_counts column with counts from counts_DF
+ls.2 <- merged_df %>%
+  dplyr::select(-c(Location.y, Group)) %>%  # Remove the counts column, if desired
+  rename(group1_counts = counts)  # Rename the column to group1_counts, if needed
+
+# Use the left_join function to merge the dataframes based on Location.celltype
+merged_df <- left_join(ls.2, counts_R, by = "Location.celltype")
+
+# Update the ls.2$group1_counts column with counts from counts_DF
+ls.2 <- merged_df %>%
+  dplyr::select(-c(Location, Group)) %>%  # Remove the counts column, if desired
+  rename(group2_counts = counts)  # Rename the column to group1_counts, if needed
+
+ls.2$L2Fchange <- log2(ls.2$group1_counts+1) - log2(ls.2$group2_counts+1)
+
+library(EnhancedVolcano)
+
+for (i in unique(ls.2$Location.x)){
+  
+Location = i
+
+    input = as.data.frame(subset(ls.2, Location.x == Location))
+    rownames(input) <- input$celltype
+
+      ##### Define custom colors #####
+      # set the base colour as grey
+      keyvals <- rep('#d3d3d3', nrow(input))
+
+      #set the base name/label as 'NS'
+      names(keyvals) <- rep('NS', nrow(input))
+
+      # modify keyvals for variables with fold change > 1 and Padj < 0.05
+      keyvals[which(input$L2Fchange > 0 &
+                      input$p < 0.05)] <- '#ba181b' #color code
+      names(keyvals)[which(input$L2Fchange > 0 &
+                             input$p < 0.05)] <- 'DF' #Upregulated genes
+
+      # modify keyvals for variables with fold change < -1
+      keyvals[which(input$L2Fchange < 0 &
+                      input$p < 0.05)] <- '#1a659e' #color code
+      names(keyvals)[which(input$L2Fchange < 0 &
+                             input$p < 0.05)] <- 'R' #Downregulated genes
+    
+     volcano <- EnhancedVolcano(input,
+                           lab = input$celltype,         # Labels of your points
+                           title = Location,                # Title of your volcanoplot
+                           x = "L2Fchange",            # What to plot on the x-axis
+                           y = "p",         # What to plot on the y-axis
+                           pCutoff = 0.05,            # Adj. P-value cutoff
+                           FCcutoff = 0,              # Fold change cutoff
+                           #selectLab = c(),          # Write down comma delimited genes to only show these genes
+                           drawConnectors = TRUE,     # Draw a connecting line to your label
+                           #arrowheads = F,           # Whether the connectors should have a arrowhead
+                           #widthConnectors = 0.1,    # How thick the line of the connectors should be
+                           #colConnectors = "black",  # Colour of the connectors
+                           #boxedLabels = TRUE,       # Draw a box around your label
+                           #legendVisible = F,        # standard is TRUE
+                           colAlpha = 0.6,            # transparency of points
+                           #xlim = c(-4.5, 4.5),      # change axis range
+                           ylim = c(0,5.5),           # change axis range
+                           pointSize = 3,             # Define size of the dots
+                           labSize = 3,            # Define size of the labels
+                           gridlines.minor = FALSE,   # Add minor grid to background
+                           gridlines.major = FALSE,   # Add major grid to background
+                           cutoffLineType = 'dashed',  # Add cutoff lines for Log2Fold/Pval. 
+                           cutoffLineCol = "#d3d3d3", # Colour of the cutoff line
+                           border = "full",           # Chose "full", "partial" or "blank"
+                           borderColour = "black",
+                           borderWidth = 0.5,
+                           colCustom = keyvals #Add custom colors for your values as defined above 
+                           ) #+ coord_flip() #Flip the volcanoplot on its side
+    
+  
+    print(volcano)
+}
+```
+
+## Fig1E
+
+```{r}
+library(ggplot2)
+library(ggpubr)
+library(scales)
+library(imcRtools)
+
+spe_S3_PC <- subset(spe, (Group == "S3_DF" | Group == "S3_R") & Location == Paracortex)
+  
+# By celltypes
+spe_S3_PC <- aggregateNeighbors(spe_S3_PC, 
+                          colPairName = "delaunay_interaction_graph", 
+                          aggregate_by = "metadata", 
+                          count_by = "celltype_level2")
+
+set.seed(220705)
+
+cn_1 <- kmeans(spe_S3_PC$aggregatedNeighbors, centers = 10, nstart = 100, iter.max = 1000)
+spe_S3_PC$k10 <- as.factor(cn_1$cluster)
+
+plotSpatial(spe_S3_PC[1], 
+            node_color_by = "k10", 
+            img_id = "sample_id", 
+            node_size_fix = 1)
+
+saveRDS(spe_S3_PC, "spe_s3_PC_neighbourhoods_K10.rds")
+```
+
+Visualise neighbourhoods on tissue
+
+```{r}
+
+# Marker expression
+plotPixels(images[number],
+           colour_by = c("CD11c", "CD8a", "CD68"), 
+           cell_id = "ObjectNumber", 
+           img_id = "sample_id",
+           bcg = list(CD11c = c(0, 12, 1.2),
+                      `CD8a` = c(0, 6, 1),
+                      CD68 = c(0, 13, 1)
+                      ),
+           colour = list(CD11c = c("black","green"),
+                         CD8a = c("black","red"), 
+                         CD68 = c("black","magenta")
+                         ))
+# Annotation
+plotCells(masks[number],
+          object = spe, 
+          cell_id = "ObjectNumber", 
+          img_id = "sample_id",
+          colour_by = "celltype_level1",
+          colour = list(celltype_level1 = metadata(spe)$color_vectors$celltype_level1))
+
+# Neighbourhoods
+plotCells(masks[number],
+          object = spe_S3_PC, 
+          cell_id = "ObjectNumber", 
+          img_id = "sample_id",
+          colour_by = "k10")
+
+
+```
+
+
+## Fig1F
+
+
+
+
+
