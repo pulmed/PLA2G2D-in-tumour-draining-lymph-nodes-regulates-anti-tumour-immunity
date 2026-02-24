@@ -282,14 +282,9 @@ library(EnhancedVolcano)
                            selectLab = genes,          # Write down comma delimited genes to only show these genes
                            drawConnectors = TRUE,     # Draw a connecting line to your label
                            max.overlaps = Inf,  
-                           #arrowheads = F,           # Whether the connectors should have a arrowhead
-                           #widthConnectors = 0.1,    # How thick the line of the connectors should be
-                           #colConnectors = "black",  # Colour of the connectors
                            boxedLabels = TRUE,       # Draw a box around your label
-                           #legendVisible = F,        # standard is TRUE
                            colAlpha = 0.6,            # transparency of points
                            xlim = c(-5, 5),      # change axis range
-                           #ylim = c(0,30),           # change axis range
                            pointSize = 3,             # Define size of the dots
                            labSize = 4,            # Define size of the labels
                            gridlines.minor = FALSE,   # Add minor grid to background
@@ -300,7 +295,7 @@ library(EnhancedVolcano)
                            borderColour = "black",
                            borderWidth = 0.5,
                            colCustom = keyvals #Add custom colors for your values as defined above 
-                           ) #+ coord_flip() #Flip the volcanoplot on its side
+                           )
     
   
     print(volcano)
