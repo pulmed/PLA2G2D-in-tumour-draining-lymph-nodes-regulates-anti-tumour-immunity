@@ -1,0 +1,307 @@
+---
+title: "Single-cell sequencing of B16F0 mouse (TD)LN and tumor"
+output: html_document
+date: "2025-10-13"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Read in data
+
+```{r}
+library(Seurat)
+library(dplyr)
+library(patchwork)
+
+sce <- readRDS("scRNAseq_melanoma_mouse.rds")
+```
+
+# Fig4I
+
+```{r}
+DimPlot(sce, group.by = "celltype", label = TRUE, cols = sce@meta.data$color_vectors$celltype) + NoLegend()
+```
+
+# Fig4J
+
+```{r}
+p1 <- VlnPlot(object = sce, features = 'Pla2g2d', group.by = "celltype", log = T) + NoLegend()
+print(p1)
+```
+
+# Fig4K
+
+```{r}
+genes <- c("Cd79a", "Ms4a1", "Cd3e", "Cd8a", "Cd4", "Foxp3", "Rorc", "S100a9", "Csf3r", "Csf2rb", "Zbtb46", "Klrb1c", "Stmn1", "Siglech", "Batf3", "H2-Aa", "Cd68", "Csf1r", "Ccr2", "Fcgr1", "Itgam", "Pla2g2d", "Cd209b", "C1qa", "Nr1h3", "Apoe")
+
+avg <- AverageExpression(
+  sce,
+  group.by = "celltype",
+  features = genes
+)$RNA
+
+gene_order <- hclust(dist(avg))$order
+genes_clustered <- rownames(avg)[gene_order]
+
+avg_scaled <- t(scale(t(avg)))
+gene_order <- hclust(dist(avg_scaled))$order
+genes_clustered <- rownames(avg_scaled)[gene_order]
+
+celltype_order <- hclust(dist(t(avg)))$order
+celltypes_clustered <- colnames(avg)[celltype_order]
+
+sce$celltype <- factor(
+  sce$celltype,
+  levels = celltypes_clustered
+)
+
+dittoDotPlot(sce, 
+             vars = genes_clustered,
+             group.by = "celltype") + coord_flip() +
+  scale_color_gradient2(
+  low = "#2166AC",
+  mid = "#F7F7F7",
+  high = "#B2182B",
+  midpoint = 0)
+```
+
+# Fig4L
+
+```{r}
+library(ggplot2)
+library(ggpubr)
+library(dplyr)
+
+# Calculate cell proportions
+
+meta <- sce@meta.data
+head(meta)
+
+counts <- meta %>%
+  group_by(tissue, celltype) %>%
+  summarise(n = n()) %>%
+  ungroup()
+
+ratios <- meta %>%
+  group_by(orig.ident, celltype, tissue) %>%
+  summarise(n = n()) %>%
+  tidyr::pivot_wider(names_from = celltype, values_from = n, values_fill = 0) %>%
+  mutate(ratio = LNM / (LNM + TAM + DC + moDC + pDC))
+
+# visualise
+
+comparisons <- list(
+  c("Tumor", "TDLN"),
+  c("LN", "TDLN"),
+  c("LN", "Tumor")
+)
+
+p1 <- ggplot(ratios, aes(x = tissue, y = ratio, fill = tissue)) +
+  geom_boxplot(alpha = 0.6, outlier.shape = NA) +
+  geom_jitter(width = 0.15, size = 2, alpha = 0.8) +
+  theme_classic(base_size = 14) + 
+  labs(
+    title = "LAMs",
+    y = "% LAMs of myeloid cells",
+    x = "Tissue"
+  ) +
+  #scale_y_continuous(trans='log10') +
+   stat_compare_means(comparisons = comparisons, method = "t.test", label = "p.signif") +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1), 
+    legend.position = "none"                             
+  )
+
+print(p1)
+```
+
+# Fig4M
+
+```{r}
+VlnPlot(object = subset(sce, celltype == "LNM"), features = 'Pla2g2d', group.by = "tissue") + NoLegend()
+```
+
+# Fig4N
+
+```{r}
+if (!requireNamespace("BiocManager", quietly = TRUE))
+  install.packages("BiocManager")
+
+BiocManager::install(c("dplyr", 
+                       "clusterProfiler", 
+                       "msigdbr", 
+                       "enrichplot",
+                       "org.Mm.eg.db"
+                       ))
+
+library(dplyr)
+library(msigdbr)
+library(clusterProfiler)
+library(org.Mm.eg.db)
+library(enrichplot)
+
+####### Preparing the data #############################################################
+##  Import your DEG data containing log2fold changes
+    df <- read.delim("DSP_LMM_DFxR.txt", row.names = 1, quote = "")
+    df <- subset(df, Subset == "CD68")
+
+##  Select only your GeneIDs and your Log2F
+    df <- df[, grepl("Gene", names(df)) | grepl("Estimate", names(df))]
+    colnames(df) <- c("GeneID", "LogF2")
+    
+  df$LogF2 <- df$LogF2 *-1
+
+##  feature 1: LOGF2
+    geneList <- df$LogF2
+
+##  feature 2: named vector
+    names(geneList) <- df$GeneID
+
+##  feature 3: decreasing order
+    geneList <- sort(geneList, decreasing = TRUE)
+    head(geneList)
+    class(geneList) #should be numeric
+
+##  Create a LogF2 cut-off e.g. > 1
+    gene <- geneList[abs(geneList) > 0] #Change log2fold cutoff here
+    head(gene)
+    
+    
+
+####### Creating a custom pathway #############################################################
+##  Make a tab-delimited file for your custom pathways
+##  [First column: name of pathway][Following columns: genes belonging to pathway]
+## !!! Make sure this is in the right species format !!!
+
+    path <- read.delim("TRM_TEX_signatures.xlsx", header = T, row.names = 1)
+    path <- subset(path, cluster == "LAM" & p_val_adj < 0.05 & avg_log2FC > 1)
+    path <- na.omit(path)
+    path <- data.frame(path = print("LAM"),
+                       gene = path$gene)
+    
+        
+convert_mouse_to_human <- function(gene_list) {
+
+  mouse_human_genes <- read.delim(
+    "https://www.informatics.jax.org/downloads/reports/HOM_MouseHumanSequence.rpt"
+  )
+
+  sapply(gene_list, function(gene) {
+    class_key <- mouse_human_genes %>%
+      dplyr::filter(Symbol == gene,
+                    Common.Organism.Name == "mouse, laboratory") %>%
+      dplyr::pull(DB.Class.Key)
+
+    if (length(class_key) == 0) return(NA)
+
+    mouse_human_genes %>%
+      dplyr::filter(DB.Class.Key == class_key,
+                    Common.Organism.Name == "human") %>%
+      dplyr::pull(Symbol) %>%
+      .[1]   # take first match only
+  })
+}
+
+path$gene <- convert_mouse_to_human(path$gene)
+path <- unique(path)
+
+table(names(geneList) %in% path$gene)
+
+####### Running the GSEA #############################################################
+
+    em <- GSEA(geneList = geneList,  
+                    exponent = 1, #standard
+                    minGSSize = 0, #Minimum amount of genes in one geneset
+                    maxGSSize = 10000, #Maximum amount of genes in one geneset
+                    pAdjustMethod = "BH", 
+                    TERM2GENE = path, #genesets
+                    pvalueCutoff = 1, #put 1 to see all pathways
+                    verbose = TRUE)
+ 
+    head(as.data.frame(cbind(em@result$ID, em@result$pvalue, em@result$p.adjust, em@result$NES)))
+    xy <- as.data.frame(cbind(em@result$ID, em@result$pvalue, em@result$p.adjust, em@result$NES))
+    colnames(xy) <- c("Pathway", "P-value", "Adj. P-value", "NES")
+
+####### Plotting your GSEA analysis #############################################################
+
+## Run the function
+        GSEAplot<-function(x){
+          gseaplot2(x = em, 
+                    geneSetID =x,
+                    base_size = 20,
+                    rel_heights = c(1.5, 0.5, 1),
+                    title=em$ID[x],
+                    color="red",
+                    subplots = 1:3,
+                    ES_geom = "line",
+                    pvalue_table=T)
+        }
+    
+    GSEAplot(1)
+```
+
+# Fig4O
+
+```{r}
+x <- subset(sce, celltype == "CD8T")
+Idents(x) <- x$treatment
+markers <- FindMarkers(x, ident.1 = "aPLA2G2D", ident.2 = "untreated", min.pct = 0)
+
+library(EnhancedVolcano)
+   
+      ##### Define custom colors #####
+      # set the base colour as grey
+      keyvals <- rep('#d3d3d3', nrow(markers))
+
+      #set the base name/label as 'NS'
+      names(keyvals) <- rep('NS', nrow(markers))
+
+      # modify keyvals for variables with fold change > 1 and Padj < 0.05
+      keyvals[which(markers$avg_log2FC > 0 &
+                      markers$p_val_adj < 0.05)] <- '#ba181b' #color code
+      names(keyvals)[which(markers$avg_log2FC > 0 &
+                             markers$p_val_adj < 0.05)] <- 'aPLA2G2D' #Upregulated genes
+      
+            # modify keyvals for variables with fold change > 1 and Padj < 0.05
+      keyvals[which(markers$avg_log2FC < 0 &
+                      markers$p_val_adj < 0.05)] <- '#023e8a' #color code
+      names(keyvals)[which(markers$avg_log2FC < 0 &
+                             markers$p_val_adj < 0.05)] <- 'untreated' #Upregulated genes
+      
+      genes <- c("Ccl5", "Runx2", "Ccl4", "Ccr5", "Gzmb", "Cxcr3", "Ctla2a", "Fasl", "Ifng", "Lag3", "Pdcd1", "Klrc1", "Id2", "Entpd1", "Ifngr1", "Tbx21", "Bhlhe40", "Nkg7", "Il2rb", "Cd44", "Eomes", "Slamf7", "Ccr9", "Tsc22d3")
+             
+      volcano <- EnhancedVolcano(markers,
+                           lab = rownames(markers),         # Labels of your points
+                           title = "CD8T - Unt vs aPLA",                # Title of your volcanoplot
+                           x = "avg_log2FC",            # What to plot on the x-axis
+                           y = "p_val_adj",         # What to plot on the y-axis
+                           pCutoff = 0,            # Adj. P-value cutoff
+                           FCcutoff = 0,              # Fold change cutoff
+                           selectLab = genes,          # Write down comma delimited genes to only show these genes
+                           drawConnectors = TRUE,     # Draw a connecting line to your label
+                           max.overlaps = Inf,  
+                           #arrowheads = F,           # Whether the connectors should have a arrowhead
+                           #widthConnectors = 0.1,    # How thick the line of the connectors should be
+                           #colConnectors = "black",  # Colour of the connectors
+                           boxedLabels = TRUE,       # Draw a box around your label
+                           #legendVisible = F,        # standard is TRUE
+                           colAlpha = 0.6,            # transparency of points
+                           xlim = c(-5, 5),      # change axis range
+                           #ylim = c(0,30),           # change axis range
+                           pointSize = 3,             # Define size of the dots
+                           labSize = 4,            # Define size of the labels
+                           gridlines.minor = FALSE,   # Add minor grid to background
+                           gridlines.major = FALSE,   # Add major grid to background
+                           cutoffLineType = 'dashed',  # Add cutoff lines for Log2Fold/Pval. 
+                           cutoffLineCol = "#d3d3d3", # Colour of the cutoff line
+                           border = "full",           # Chose "full", "partial" or "blank"
+                           borderColour = "black",
+                           borderWidth = 0.5,
+                           colCustom = keyvals #Add custom colors for your values as defined above 
+                           ) #+ coord_flip() #Flip the volcanoplot on its side
+    
+  
+    print(volcano)
+```
