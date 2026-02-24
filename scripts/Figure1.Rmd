@@ -728,8 +728,6 @@ print(p)
 CD8 and DCs are physically touching, MOs are within 3 cells (30um) from one another.
 
 ```{R, fig.width=6, fig.height=5.5}
-#x <- readRDS("cellDistance_dyads_SPE_V3.rds")
-
 spe$DC_CD8_MO_15 = ifelse(spe$Distance_to_DC_CD8_dyad < 15 & spe$celltype_level1 == "Macrophages", "Yes", "No")
 spe$DC_CD8_MO_30 = ifelse(spe$Distance_to_DC_CD8_dyad < 30 & spe$celltype_level1 == "Macrophages", "Yes", "No")
 
