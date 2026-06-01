@@ -62,7 +62,7 @@ unique(spe$Alias) # ROI number
 ```{r save.file, eval = FALSE}
 library(dplyr)
 
-meta <- read.xlsx("Z:/Asthma-Lympho/Anneloes/04_Manuscripts/02_Hyperion_Melanoma/01_Pre-Processing/metadata_V2.xlsx", sheetIndex = 1)
+meta <- read.xlsx("metadata_V2.xlsx", sheetIndex = 1)
 
 # check if annotations are correct
 x <- paste0(spe$Metadata_acname,"_", spe$Metadata_description)
