@@ -15,23 +15,23 @@ library(Seurat)
 library(dplyr)
 library(patchwork)
 
-sce <- readRDS("scRNAseq_melanoma_mouse.rds")
+sce <- readRDS("GSE333464_scRNAseq_mouse_PLA2G2D.rds")
 ```
 
-# Fig4I
+# Fig4H
 
 ```{r}
 DimPlot(sce, group.by = "celltype", label = TRUE, cols = sce@meta.data$color_vectors$celltype) + NoLegend()
 ```
 
-# Fig4J
+# Fig4I
 
 ```{r}
 p1 <- VlnPlot(object = sce, features = 'Pla2g2d', group.by = "celltype", log = T) + NoLegend()
 print(p1)
 ```
 
-# Fig4K
+# Fig4J
 
 ```{r}
 genes <- c("Cd79a", "Ms4a1", "Cd3e", "Cd8a", "Cd4", "Foxp3", "Rorc", "S100a9", "Csf3r", "Csf2rb", "Zbtb46", "Klrb1c", "Stmn1", "Siglech", "Batf3", "H2-Aa", "Cd68", "Csf1r", "Ccr2", "Fcgr1", "Itgam", "Pla2g2d", "Cd209b", "C1qa", "Nr1h3", "Apoe")
@@ -103,8 +103,8 @@ p1 <- ggplot(ratios, aes(x = tissue, y = ratio, fill = tissue)) +
   geom_jitter(width = 0.15, size = 2, alpha = 0.8) +
   theme_classic(base_size = 14) + 
   labs(
-    title = "LAMs",
-    y = "% LAMs of myeloid cells",
+    title = "LNMs",
+    y = "% LNMs of myeloid cells",
     x = "Tissue"
   ) +
   #scale_y_continuous(trans='log10') +
@@ -176,9 +176,9 @@ library(enrichplot)
 ## !!! Make sure this is in the right species format !!!
 
     path <- read.delim("TRM_TEX_signatures.xlsx", header = T, row.names = 1)
-    path <- subset(path, cluster == "LAM" & p_val_adj < 0.05 & avg_log2FC > 1)
+    path <- subset(path, cluster == "LNM" & p_val_adj < 0.05 & avg_log2FC > 1)
     path <- na.omit(path)
-    path <- data.frame(path = print("LAM"),
+    path <- data.frame(path = print("LNM"),
                        gene = path$gene)
     
         

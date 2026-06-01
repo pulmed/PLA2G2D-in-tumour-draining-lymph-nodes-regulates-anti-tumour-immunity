@@ -171,7 +171,7 @@ print(volcano)
 
 ## Fig2C - Left
 
-Dendritic cells
+mRegDC genes
 
 ```{r}
 library(dplyr)
@@ -321,7 +321,8 @@ df <- subset(results, results$Subset == "CD68")
                     pvalue_table=T)
         }
     
-    GSEAplot(1)
+    GSEAplot("8")
+    GSEAplot("10")
 ``` 
 
 ## Fig2C - Right
