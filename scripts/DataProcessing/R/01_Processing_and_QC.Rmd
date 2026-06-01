@@ -1,0 +1,563 @@
+---
+title: "IMC processing and QC"
+output: html_document
+date: "2025-10-13"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Processing of this data is based on Bodenmiller et al. imcRtools package and documentation.
+https://bodenmillergroup.github.io/IMCDataAnalysis/index.html
+
+# Packages and dependencies
+
+
+```{r install-packages, eval=FALSE}
+if (!requireNamespace("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+BiocManager::install(c("pheatmap", "viridis",
+                       "zoo", "BiocManager", "devtools", "tiff",
+                       "distill", "ggrepel", "patchwork", "mclust",
+                       "RColorBrewer", "uwot", "Rtsne", "Seurat", "Matrix",
+                       "SeuratObject", "cowplot", "kohonen", "caret", 
+                       "randomForest", "ggridges", "cowplot", "gridGraphics",
+                       "scales", "tiff", "CATALYST", "scuttle", "scater", 
+                       "dittoSeq", "tidyverse", "batchelor", 
+                       "bluster","scran", "lisaClust", "spicyR",
+                       "iSEE", "harmony", "imcRtools", "cytomapper"))
+
+# Github dependencies
+devtools::install_github("i-cyto/Rphenograph")
+```
+
+```{r, message=FALSE}
+#BiocManager::install("imcRtools")
+#BiocManager::install("htmltools")
+library(htmltools)
+library(imcRtools)
+library(remotes)
+library(devtools)
+library(CATALYST)
+library(cytomapper)
+library(ggplot2)
+library(ggraph)
+library(tidyverse)
+library(xlsx)
+library(dittoSeq)
+library(cytomapper)
+```
+
+```{r read-cpout}
+spe <- read_cpout("CompleteSet/cpout/")
+
+markers <- rownames(spe)
+spe
+
+unique(spe$Alias) # ROI number
+```
+
+```{r save.file, eval = FALSE}
+library(dplyr)
+
+meta <- read.xlsx("Z:/Asthma-Lympho/Anneloes/04_Manuscripts/02_Hyperion_Melanoma/01_Pre-Processing/metadata_V2.xlsx", sheetIndex = 1)
+
+# check if annotations are correct
+x <- paste0(spe$Metadata_acname,"_", spe$Metadata_description)
+x2 <- cbind(table(x[grep("P001", x)]))
+            
+table(meta$Object.name[grep("P001", meta$Object.name)])
+
+table(spe$Metadata_description)
+
+unique(x)
+
+unique(x[!(x %in% meta$Object.name)])
+
+
+unique(meta$Object.name[!(meta$Object.name %in% x)])
+```
+
+```{r set-colnames}
+colnames(spe) <- paste0(spe$sample_id, "_", spe$ObjectNumber)
+```
+
+```{r add-indication, message=FALSE}
+# Read patient metadata
+meta <- read.csv("CompleteSet/cpinp/acquisition_metadata.csv")
+meta$ID <- paste0(meta$AcSession, "_", meta$id)
+meta$ROI.ID <- paste0(meta$Patient, "_", meta$description)
+meta$Group.Location <- paste0(meta$Group, "_", meta$Location)
+length(unique(meta$Patient))
+  
+# What type of metadata is associated?
+names(spe@colData)
+
+unique(spe$sample_id) # ROI number
+unique(spe$Metadata_acname) # Patient data
+unique(spe$Metadata_description) # ROI name
+unique(spe$Metadata_acid) # ROI number per patient
+
+# Store metadata in SPE object
+spe$Patient <- spe$Metadata_acname
+spe$ID <- paste0(spe$Metadata_acname, "_", spe$Metadata_acid)
+spe$ROI.ID <- paste0(spe$Metadata_acname,"_", spe$Metadata_description)
+spe$ROI.ID <- meta$Object.name[match(spe$ID, meta$ID)]
+spe$Alias <- meta$Alias[match(spe$ROI.ID, meta$ROI.ID)]
+spe$Group <- meta$Group[match(spe$ROI.ID, meta$ROI.ID)]
+spe$Location <- meta$Location[match(spe$ROI.ID, meta$ROI.ID)]
+spe$RFS.time <- meta$RFS[match(spe$ROI.ID, meta$ROI.ID)]
+spe$Group.location <- meta$Group.Location[match(spe$ROI.ID, meta$ROI.ID)]
+spe$Image.name = meta$ID[match(spe$ROI.ID, meta$ROI.ID)]
+
+unique(spe$Patient)
+unique(spe$ROI.ID)
+unique(spe$Alias)
+unique(spe$Group)
+unique(spe$Location)
+unique(spe$RFS.time)
+unique(spe$Group.location)
+unique(spe$Image.name)
+
+meta$ROI.number = stri_extract_last_regex(meta$ROI.number, "\\d{1,2}")
+
+# check final metadata
+names(spe@colData)
+
+#Remove ROIs which were not completely ablated
+
+spe <- spe[,!grepl("NA", colData(spe)$ROI.ID)]
+
+unique(spe$ROI.ID)
+rownames(spe) <- markers
+```
+
+Some samples had wrong labeling. These were changed like this: 
+
+"P005_SC_03_N" = "P005_SC_03"
+
+"P005_SC_03_S" = "P005_SC_04"
+
+"P005_PT_03_N" = "P005_PT_03"
+
+"P005_PT_03_S" = "P005_PT_06"
+
+"P019_C_02N" = "P019_C_02"
+
+"P019_C_02S" = "P019_C_05"
+
+"P020_C_02N" = "P020_C_02"
+
+"P020_C_02S" = "P020_C_06"
+
+```{r labels}
+panel = read.csv("CompleteSet/cpout/panel2.csv")
+
+rownames(spe) <- panel$Target[match(rownames(spe), panel$Metal.Tag)]
+rownames(spe)
+
+#saveRDS(spe, "CompleteSet_spe.rds")
+```
+I saved the spe object here as a untouched reference point.
+
+
+## Transform counts
+
+The distribution of expression counts across cells is often observed to be skewed towards the right side meaning lots of cells display low counts and few cells have high counts. To avoid analysis biases from these high-expressing cells, the expression counts are commonly transformed or clipped.
+
+Here, we perform counts transformation using an inverse hyperbolic sine function. This transformation is commonly applied to flow cytometry data. The cofactor here defines the expression range on which no scaling is performed. While the cofactor for CyTOF data is often set to 5, IMC data usually display much lower counts. We therefore apply a cofactor of 1.
+
+```{r transform_counts}
+# Transform assay
+assay(spe, "exprs") <- asinh(counts(spe)/1)
+
+
+dittoRidgePlot(spe, var = "SOX10", group.by = "Location", assay = "counts") +
+    ggtitle("SOX10 - before transformation")
+
+dittoRidgePlot(spe, var = "SOX10", group.by = "Location", assay = "exprs") +
+    ggtitle("SOX10 - after transformation")
+
+dittoRidgePlot(spe, var = "CD45", group.by = "Location", assay = "exprs") +
+    ggtitle("CD45 - after transformation")
+
+dittoRidgePlot(spe, var = "CD8a", group.by = "Location", assay = "exprs") +
+    ggtitle("CD8a - after transformation")
+
+dittoRidgePlot(spe, var = "CD20", group.by = "Location", assay = "exprs") +
+    ggtitle("CD20 - after transformation")
+
+
+```
+
+For downstream analysis such as visualization, dimensionality reduction and clustering, only a subset of markers should be used. As convenience, we can store an additional entry in the rowData slot that specifies the markers of interest. Here, we deselect the nuclear markers, which were primarily used for cell segmentation, and keep all other biological targets. However, more informed marker selection should be performed to exclude lowly expressed marker or markers with low signal-to-noise ratio.
+
+
+```{r define.channels}
+rowData(spe)$use_channel <- !grepl("DNAI|DNAII", rownames(spe))
+```
+
+```{r images}
+images <- loadImages("CompleteSet/cpout/images/", pattern = ".tiff")
+masks <- loadImages("CompleteSet/cpout/masks/", as.is = TRUE)
+
+channelNames(images) <- rownames(spe)
+images
+
+names(images) = str_replace(names(images),"_ac_full", "")
+names(masks) = str_replace(names(masks),"_ac_ilastik_s2_Probabilities_mask", "")
+names(images) = str_replace(names(images),"s0_a", "")
+names(masks) = str_replace(names(masks),"s0_a", "")
+
+names(masks)
+names(images)
+
+all.equal(names(images), names(masks))
+
+```
+
+```{r image.meta}
+# Add additional metadata
+Patient <- spe$Patient[match(names(images), spe$Image.name)]
+Alias <- spe$Alias[match(names(images), spe$Image.name)]
+Group <- spe$Group[match(names(images), spe$Image.name)]
+Location <- spe$Location[match(names(images), spe$Image.name)]
+RFS.time <- spe$RFS.time[match(names(images), spe$Image.name)]
+Group.location <- spe$Group.location[match(names(images), spe$Image.name)]
+
+# Store patient and image level information in elementMetadata
+mcols(images) <- mcols(masks) <- DataFrame(sample_id = names(images),
+                                           Patient = Patient,
+                                           Group = Group,
+                                           Location = Location,
+                                           RFS.time = RFS.time,
+                                           Group.location = Group.location
+                                           )
+```
+
+## Save objects
+
+```{r save}
+saveRDS(spe, "spe.rds")
+saveRDS(images, "images.rds")
+saveRDS(masks, "masks.rds")
+```
+
+# QC
+
+The first step after image segmentation is to observe its accuracy. Without having ground-truth data readily available, a common approach to segmentation quality control is to overlay segmentation masks on composite images displaying channels that were used for segmentation. The `cytomapper` package supports exactly this tasks by using the `plotPixels` function.
+
+Here, we select 3 random images and perform image- and channel-wise normalization (channels are first min-max normalized and scaled to a range of 0-1 before clipping the maximum intensity to 0.2).
+
+```{r seg.QC, fig.height=20, fig.width=20}
+library(cytomapper)
+set.seed(20230426)
+img_ids <- sample(seq_len(length(images)), 3)
+
+# Normalize and clip images
+cur_images <- images[img_ids]
+cur_images <- normalize(cur_images, separateImages = TRUE)
+cur_images <- normalize(cur_images, inputRange = c(0, 0.2))
+
+cur_images
+
+plotPixels(cur_images,
+           mask = masks[img_ids],
+           img_id = "sample_id",
+           missing_colour = "white",
+           colour_by = c("CD11c", "CD20", "CD8a", "SOX10", "DNAI"),
+           colour = list(CD11c = c("black", "yellow"), #CD11c
+                         CD20 = c("black", "cyan"), #CD20
+                         CD8a= c("black", "red"),  #CD8a
+                         SOX10= c("black", "green"), #Sox10
+                         DNAI  = c("black", "blue")), #DNA
+           image_title = NULL,
+           legend = list(colour_by.title.cex = 0.7,
+                         colour_by.labels.cex = 0.7))
+```
+
+An additional approach to observe cell segmentation quality and potentially also antibody specificity issues is to visualize single-cell expression in form of a heatmap. Here, we sub-sample the dataset to 2000 cells for visualization purposes and overlay the location from which the cells were extracted.
+
+```{r heatmap, message = FALSE, warning=FALSE, fig.height=8, fig.width=8}
+library(dittoSeq)
+library(viridis)
+cur_cells <- sample(seq_len(ncol(spe)), 10000)
+
+dittoHeatmap(spe[,cur_cells], genes = rownames(spe)[rowData(spe)$use_channel],
+             assay = "exprs", cluster_cols = TRUE, scale = "none" ,
+             heatmap.colors = viridis(100), annot.by = "Location")
+```
+We can differentiate between tumor cells (SOX10+) and immune cells (CD45+).
+
+## Image-level Quality control
+
+Image-level quality control is often performed using tools that offer a graphical user interface such as QuPath and FIJI. Viewers that were specifically developed for IMC data can be seen here. In this section, we will specifically focus on quantitative metrics to assess image quality.
+
+Remove small cells
+
+```{r small.cells}
+summary(spe@colData$AreaShape_Area)
+sum(spe@colData$AreaShape_Area < 10)
+sum(spe@colData$AreaShape_Area > 400)
+spe <- spe[,spe@colData$AreaShape_Area >= 10]
+
+small = spe[,spe@colData$AreaShape_Area < 10]
+small$ROI.ID
+
+large = spe[,spe@colData$AreaShape_Area > 400]
+large$ROI.ID
+
+extra.large = spe[,spe@colData$AreaShape_Area > 500]
+extra.large$ROI.ID
+```
+
+Cells per mm2
+```{r cells.mm2}
+
+colData(spe) %>%
+    as.data.frame() %>%
+    group_by(sample_id) %>%
+    summarize(cell_count = n(),
+           no_pixels = mean(AreaShape_MajorAxisLength) * mean(AreaShape_MinorAxisLength)) %>%
+    mutate(cells_per_mm2 = cell_count/(no_pixels/1000000)) %>%
+    ggplot() +
+        geom_point(aes(sample_id, cells_per_mm2)) + 
+        theme_minimal(base_size = 15)  + 
+        theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8)) +
+        ylab("Cells per mm2") + xlab("")
+```
+
+## Cell-level quality control
+
+In the following paragraphs we will look at different metrics and visualization approaches to assess data quality (as well as biological differences) on the single-cell level.
+
+Related to the signal-to-noise ratio (SNR) calculated above on the pixel-level, a similar measure can be derived on the single-cell level. Here, we will use a two component Gaussian mixture model for each marker to find cells with positive and negative expression. The SNR is defined as:
+
+SNR = I(s)/I(n)
+ 
+where `I(s)` is the intensity of the signal (mean intensity of cells with positive signal) and `I(n)` is the intensity of the noise (mean intensity of cells lacking expression). We calculate the `SNR` and signal intensity by fitting the mixture model across the transformed counts of all cells contained in the `SpatialExperiment` object.
+
+```{r QC.cell, echo=FALSE}
+library(mclust)
+library(ggplot2)
+library(ggrepel)
+
+set.seed(220224)
+mat <- apply(assay(spe, "exprs"), 1, function(x){
+    cur_model <- Mclust(x, G = 2)
+    mean1 <- mean(x[cur_model$classification == 1])
+    mean2 <- mean(x[cur_model$classification == 2])
+    
+    signal <- ifelse(mean1 > mean2, mean1, mean2)
+    noise <- ifelse(mean1 > mean2, mean2, mean1)
+    
+    return(c(snr = signal/noise, ps = signal))
+})
+    
+cur_snr <- t(mat) %>% as.data.frame() %>% 
+        mutate(marker = colnames(mat))
+
+cur_snr %>% ggplot() +
+    geom_point(aes(log2(ps), log2(snr))) +
+    geom_label_repel(aes(log2(ps), log2(snr), label = marker)) +
+    theme_minimal(base_size = 15) + ylab("Signal-to-noise ratio [log2]") +
+    xlab("Signal intensity [log2]")
+```
+
+Another quality indicator is the image area covered by cells (or biological tissue). This metric identifies ROIs where little cells are present, possibly hinting at incorrect selection of the ROI. We can compute the percentage of covered image area using the metadata contained in the SpatialExperiment object:
+
+```{r area, fig.width=15, fig.height=8, echo=FALSE}
+spe
+colData(spe)
+
+colData(spe) %>%
+    as.data.frame() %>%
+    group_by(ROI.ID) %>%
+    summarize(cell_area = sum(AreaShape_Area),
+           no_pixels = 250000) %>%
+    mutate(covered_area = cell_area / no_pixels) %>%
+    ggplot() +
+        geom_point(aes(reorder(ROI.ID,covered_area), covered_area)) + 
+        theme_minimal(base_size = 15) +
+        ylim(c(0, 1)) + 
+        theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8)) +
+        ylab("% covered area") + xlab("")
+```
+
+We observe that 8 of the 370 images show unusually low cell coverage. These images can now be visualized using cytomapper.
+
+```{r vis.low.area, fig.height=20, fig.width=20}
+library(xlsx)
+
+low = colData(spe) %>%
+    as.data.frame() %>%
+    group_by(ROI.ID) %>%
+    summarize(cell_area = sum(AreaShape_Area),
+           no_pixels = 250000) %>%
+    mutate(covered_area = cell_area / no_pixels) %>%
+  filter(covered_area < 0.5)
+
+ls = spe$Image.name[spe$ROI.ID %in% low$ROI.ID]
+
+# Normalize and clip images
+cur_images <- images[c(ls)]
+cur_images <- normalize(cur_images, separateImages = TRUE)
+cur_images <- normalize(cur_images, inputRange = c(0, 0.2))
+
+plotPixels(cur_images,
+           mask = masks[c(ls$Seg.name)],
+           img_id = "sample_id",
+           missing_colour = "white",
+           colour_by = c("Dy161Di", "Nd142Di", "Dy162Di", "Gd158Di", "Ir193Di"),
+           colour = list(Nd142Di = c("black", "yellow"), #CD11c
+                         Dy161Di = c("black", "cyan"), #CD20
+                         Dy162Di= c("black", "red"),  #CD8a
+                         Gd158Di= c("black", "green"), #Sox10
+                         Ir193Di  = c("black", "blue")), #DNA
+           legend = list(colour_by.title.cex = 0.7,
+                         colour_by.labels.cex = 0.7))
+```
+These images display less dense tissue structure but overall the images are intact and seem segemented correctly.
+
+Finally, it can be beneficial to visualize the mean marker expression per image to identify images with outlying marker expression. This check does not indicate image quality per se but can highlight biological differences. Here, we will use the aggregateAcrossCells function of the scuttle package to compute the mean expression per image. For visualization purposes, we again asinh transform the mean expression values.
+
+```{r mean.marker.per.image, fig.height=8, fig.width=12}
+library(scuttle)
+
+image_mean <- aggregateAcrossCells(spe, 
+                                   ids = spe$sample_id, 
+                                   statistics="mean",
+                                   use.assay.type = "counts")
+assay(image_mean, "exprs") <- asinh(counts(image_mean))
+
+dittoHeatmap(image_mean, genes = rownames(spe)[rowData(spe)$use_channel],
+             assay = "exprs", cluster_cols = TRUE, scale = "none",
+             heatmap.colors = viridis(100), 
+             annot.by = c("Location", "Group", "RFS.time"),
+             show_colnames = TRUE)
+```
+
+
+```{r all.markers, fig.height= 20, fig.width=10}
+multi_dittoPlot(spe, vars = rownames(spe)[rowData(spe)$use_channel],
+               group.by = "Location", plots = c("ridgeplot"), 
+               assay = "exprs")
+
+```
+
+```{r correlation, fig.height= 8, fig.width= 12}
+library(dittoSeq)
+library(patchwork)
+#BiocManager::install("ggplot.multistats")
+library(ggplot.multistats)
+
+dittoScatterPlot(spe, x.var = "CD3", y.var = "CD20", xlab = "CD3", ylab = "CD20", assay.x = "exprs", assay.y = "exprs")
+
+rownames(spe)
+
+dittoScatterHex(
+    object = spe,
+    x.var = "PD-L1", y.var = "FoxP3",
+    assay.x = "exprs", assay.y = "exprs",
+    color.var = "Location",
+    colors = c(1:4,7), max.density = 15)
+
+dittoScatterHex(
+    object = spe,
+    x.var = "PD-L1", y.var = "SOX10",
+    assay.x = "exprs", assay.y = "exprs",
+    color.var = "Group",
+    colors = c(1:4,7), max.density = 15)
+
+dittoDotPlot(spe, vars = rownames(spe)[rowData(spe)$use_channel], group.by = "Location", 
+    scale = TRUE)
+
+# Original
+dittoBarPlot(spe, "Location", group.by = "Group", scale = "count")
+
+dittoPlot(spe, "SOX10", group.by = "Group", 
+    split.by = "Location")
+
+dittoPlot(spe, "SOX10", group.by = "Location", split.by = "Patient")
+
+dittoDimPlot(spe, "Group.location", size = 3, do.ellipse = TRUE, )
+
+```
+
+```{r PCA.pergroup}
+counts <- spe@assays@data$exprs
+metadata <- spe@colData
+
+row.names(counts)
+colnames(counts)
+rownames(metadata)
+
+table(rownames(metadata) == colnames(counts))
+
+ls <- list()
+
+pb <- txtProgressBar(min = 0,      # Minimum value of the progress bar
+                     max = length(metadata$Group.location), # Maximum value of the progress bar
+                     style = 3,    # Progress bar style (also available style = 1 and style = 2)
+                     width = 50,   # Progress bar width. Defaults to getOption("width")
+                     char = "=")   # Character used to create the bar
+
+
+for (i in metadata$Group.location){
+print(paste0("Reading in ", i ))
+start.time = sys.Time()  
+group.meta <- metadata[grep(i, metadata$Group.location),]
+print(paste0("Finished reading in metadata:", sys.time()-start.time))
+
+print(paste0("Group consists of ", length(group.meta), cells))
+
+#### Merging
+print("Merging counts and metadata")
+init[i] <- Sys.time()
+group.count <- merge(counts, metadata, by.x = colnames(counts), by.y = rownames(metadata))
+
+ end[i] <- Sys.time()
+
+    setTxtProgressBar(pb, i)
+    time <- round(seconds_to_period(sum(end - init)), 0)
+  
+    # Estimated remaining time based on the
+    # mean time that took to run the previous iterations
+    est <- n_iter * (mean(end[end != 0] - init[init != 0])) - time
+    remainining <- round(seconds_to_period(est), 0)
+  
+    cat(paste(" // Execution time:", time,
+              " // Estimated time remaining:", remainining), "")
+
+#### Calculate col means
+
+print("Calculating column means...")
+start.time = sys.Time() 
+mean.marker <- colMeans(group.count)
+print(paste0("Finished calculating column means:", sys.time()-start.time))
+
+print("Writing to list...")
+ls[[i]] <- group.count
+}
+
+close(pb)
+
+
+library(PCAtools)
+ 
+p <- pca(counts, metadata = metadata, removeVar = 0.1)
+  screeplot(p, axisLabSize = 18, titleLabSize = 22)
+
+    biplot(p,
+    lab = p$metadata$Group.location,
+    colby = 'Group.location',
+    hline = 0, vline = 0,
+    legendPosition = 'top',
+     # encircle config
+    encircle = TRUE,
+    encircleFill = TRUE,)
+```
+
+

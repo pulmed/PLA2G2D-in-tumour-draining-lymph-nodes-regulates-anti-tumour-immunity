@@ -1,3 +1,13 @@
+---
+title: "DSP data analysis"
+output: html_document
+date: "2025-10-13"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
 ## DSP data
 
 ```{r}
