@@ -14,7 +14,6 @@ knitr::opts_chunk$set(echo = TRUE)
 spe <- readRDS("spe_TDLN_Mela.rds")
 images = readRDS("images_spe.rds")
 masks = readRDS("masks_spe.rds")
-    
 ```
 
 # Fig1B

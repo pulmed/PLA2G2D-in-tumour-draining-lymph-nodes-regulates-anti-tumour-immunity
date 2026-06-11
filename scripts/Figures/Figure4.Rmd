@@ -67,7 +67,7 @@ dittoDotPlot(sce,
   midpoint = 0)
 ```
 
-# Fig4L
+# Fig4K
 
 ```{r}
 library(ggplot2)
@@ -117,15 +117,17 @@ p1 <- ggplot(ratios, aes(x = tissue, y = ratio, fill = tissue)) +
 print(p1)
 ```
 
+# Fig4L
+
+```{r, fig.width=3, fig.height=4}
+VlnPlot(merged, features = "Pla2g2d", group.by = "tissue", log = T)
+```
+
 # Fig4M
 
 ```{r}
-VlnPlot(object = subset(sce, celltype == "LNM"), features = 'Pla2g2d', group.by = "tissue") + NoLegend()
-```
+#https://rpubs.com/IL2/514990
 
-# Fig4N
-
-```{r}
 if (!requireNamespace("BiocManager", quietly = TRUE))
   install.packages("BiocManager")
 
@@ -133,7 +135,9 @@ BiocManager::install(c("dplyr",
                        "clusterProfiler", 
                        "msigdbr", 
                        "enrichplot",
-                       "org.Mm.eg.db"
+                       "org.Hs.eg.db", 
+                       "org.Mm.eg.db", 
+                       "bioma"
                        ))
 
 library(dplyr)
@@ -175,10 +179,10 @@ library(enrichplot)
 ##  [First column: name of pathway][Following columns: genes belonging to pathway]
 ## !!! Make sure this is in the right species format !!!
 
-    path <- read.delim("TRM_TEX_signatures.xlsx", header = T, row.names = 1)
-    path <- subset(path, cluster == "LNM" & p_val_adj < 0.05 & avg_log2FC > 1)
+    path <- read.delim("P044_LN_TDLN_CelltypeMarkers.txt", header = T, row.names = 1)
+    path <- subset(path, cluster == "LAM" & p_val_adj < 0.05 & avg_log2FC > 1)
     path <- na.omit(path)
-    path <- data.frame(path = print("LNM"),
+    path <- data.frame(path = print("LAM"),
                        gene = path$gene)
     
         
@@ -220,9 +224,13 @@ table(names(geneList) %in% path$gene)
                     pvalueCutoff = 1, #put 1 to see all pathways
                     verbose = TRUE)
  
+##  Save your GSEA output
+    setwd("YOUR_PATH") #where you will write your file
+
     head(as.data.frame(cbind(em@result$ID, em@result$pvalue, em@result$p.adjust, em@result$NES)))
     xy <- as.data.frame(cbind(em@result$ID, em@result$pvalue, em@result$p.adjust, em@result$NES))
     colnames(xy) <- c("Pathway", "P-value", "Adj. P-value", "NES")
+    write.table(xy, "FILENAME.txt", sep = "\t", row.names = F, col.names = T)
 
 ####### Plotting your GSEA analysis #############################################################
 
@@ -240,9 +248,193 @@ table(names(geneList) %in% path$gene)
         }
     
     GSEAplot(1)
+      
+## Save your GSEA plot
+
+        filename <- paste0("GSEA_LAM.pdf")
+
+        pdf(file = filename, width = 10, height = 9)
+        GSEAplot(1)
+        dev.off()
+ 
+```
+
+# Fig4N
+
+```{r, fig.height=7, fig.width=6}
+
+x <- subset(merged, (celltype == "LAM"))
+
+expr <- FetchData(x, vars = gene)[,1]
+x$pla_status <- ifelse(expr > 0, "Pla2g2d+", "Pla2g2d-")
+
+Idents(x) <- x$pla_status
+table(x$pla_status)
+
+markers <- FindMarkers(LNM, group.by = "pla_status", ident.1 = "Pla2g2d+", ident.2 = "Pla2g2d-")
+
+write.table(markers, "P044_clusterMarkers_LAM_plapos_vs_planeg.txt", sep = "\t")
+
+
+library(EnhancedVolcano)
+   
+      ##### Define custom colors #####
+      # set the base colour as grey
+      keyvals <- rep('#d3d3d3', nrow(markers))
+
+      #set the base name/label as 'NS'
+      names(keyvals) <- rep('NS', nrow(markers))
+
+      # modify keyvals for variables with fold change > 1 and Padj < 0.05
+      keyvals[which(markers$avg_log2FC > 0.4 &
+                      markers$p_val_adj < 0.05)] <- '#ba181b' #color code
+      names(keyvals)[which(markers$avg_log2FC > 0.4 &
+                             markers$p_val_adj < 0.05)] <- 'Pla2g2d+' #Upregulated genes
+      
+            # modify keyvals for variables with fold change > 1 and Padj < 0.05
+      keyvals[which(markers$avg_log2FC < -0.4 &
+                      markers$p_val_adj < 0.05)] <- '#023e8a' #color code
+      names(keyvals)[which(markers$avg_log2FC < -0.4 &
+                             markers$p_val_adj < 0.05)] <- 'Pla2g2d-' #Upregulated genes
+      
+      genes = c("Gpm6b", "Cd4", "Rxrg", "Cxcr2", "Apoe", "Lyz2", "Il4i1", "Cd63", "Il22ra2", "Nr1h3", "Timd4", "Trem2", "Spp1", "Adgre1", "Ccr2", "Pla2g2d")
+      
+      genes[!genes %in% rownames(markers)]
+      
+      volcano <- EnhancedVolcano(markers,
+                           lab = rownames(markers),         # Labels of your points
+                           title = "LNM - Pla2g2d+ vs Pla2g2d-",                # Title of your volcanoplot
+                           x = "avg_log2FC",            # What to plot on the x-axis
+                           y = "p_val_adj",         # What to plot on the y-axis
+                           pCutoff = 0.05,            # Adj. P-value cutoff
+                           FCcutoff = 0.4,              # Fold change cutoff
+                           selectLab = genes,          # Write down comma delimited genes to only show these genes
+                           drawConnectors = TRUE,     # Draw a connecting line to your label
+                           #max.overlaps = Inf,  
+                           #arrowheads = F,           # Whether the connectors should have a arrowhead
+                           #widthConnectors = 0.1,    # How thick the line of the connectors should be
+                           #colConnectors = "black",  # Colour of the connectors
+                           #boxedLabels = TRUE,       # Draw a box around your label
+                           #legendVisible = F,        # standard is TRUE
+                           colAlpha = 0.6,            # transparency of points
+                           #xlim = c(-13, 20),      # change axis range
+                           #ylim = c(0,30),           # change axis range
+                           pointSize = 3,             # Define size of the dots
+                           labSize = 4,            # Define size of the labels
+                           gridlines.minor = FALSE,   # Add minor grid to background
+                           gridlines.major = FALSE,   # Add major grid to background
+                           cutoffLineType = 'dashed',  # Add cutoff lines for Log2Fold/Pval. 
+                           cutoffLineCol = "#d3d3d3", # Colour of the cutoff line
+                           border = "full",           # Chose "full", "partial" or "blank"
+                           borderColour = "black",
+                           borderWidth = 0.5,
+                           colCustom = keyvals #Add custom colors for your values as defined above 
+                           ) #+ coord_flip() #Flip the volcanoplot on its side
+    
+  
+    pdf("volcano_LNM_plapos_vs_planeg.pdf", width = 10, height = 8)
+    print(volcano)
+    dev.off()
+    
 ```
 
 # Fig4O
+
+```{r}
+if (!require("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+#BiocManager::install("biomaRt")
+library("biomaRt")
+
+
+geneSet <- read.delim("TMZ_immunity-2017.txt")
+gs.ls <- as.list(geneSet)
+
+# check if genes are in list
+
+genes_in_seurat <- rownames(merged)
+filtered_list <- lapply(gs.ls, function(gene_vec) {
+  gene_vec[gene_vec %in% genes_in_seurat]
+})
+
+lengths(filtered_list)
+min_genes <- 5
+filtered_list <- filtered_list[lengths(filtered_list) >= min_genes]
+
+merged <- AddModuleScore(object = merged, 
+                         features = filtered_list, 
+                         name = paste0("Score_", names(filtered_list)), 
+                         ctrl = 5, 
+                         seed = 291225)
+
+# Plot
+
+score_features <- grep("Score", colnames(merged@meta.data), value = TRUE)
+score_features
+
+VlnPlot(object =  subset(merged, (tissue == "TDLN" | tissue == "LN") & (lineage == "Macrophage" | lineage == "DC")), 
+        features = score_features , group.by = "celltype") + NoLegend()
+
+
+pdf("Score_TMZ_signature.pdf", width = 5, height = 5)
+FeaturePlot(merged, features = "Score_TMZ_signature1", order = T, min.cutoff = "q10")
+dev.off()
+
+```
+
+# Fig4P
+
+```{r, fig.width=4, fig.height=5}
+# Load libraries
+library(Seurat)
+library(ggplot2)
+library(ggpubr)
+library(dplyr)
+
+# Choose your gene of interest
+gene_of_interest <- "Score_TMZ_signature1"
+
+# Extract expression values and metadata
+expr_data <- FetchData(x, vars = c(gene_of_interest, "celltype", "pla_status"))
+colnames(expr_data) <- c("expression", "celltype",  "pla_status")
+
+# Define your custom color palette (16 distinct colors)
+my_colors <- c(
+  "#1f77b4", "#ff7f0e")
+
+# Make sure colors correspond to your celltype order
+# (optional, ensures consistent mapping)
+names(my_colors) <- levels(factor(expr_data$pla_status))
+
+# Basic boxplot using ggplot2 with custom colors
+p <- ggplot(expr_data, aes(x = pla_status, y = expression, fill = pla_status)) +
+  geom_boxplot(outlier.shape = NA, alpha = 0.8) +
+  geom_jitter(width = 0.2, size = 1.5, alpha = 0.5) +
+  scale_fill_manual(values = my_colors) +             # <-- your custom palette
+  #scale_y_log10() +
+  labs(
+    title = paste("ModuleScore TZM Signature"),
+    x = "Cell Type",
+    y = expression(paste("log"[10], "(Expression)"))
+  ) +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    plot.title = element_text(hjust = 0.5),
+    legend.position = "none"
+  ) +
+  facet_wrap(~celltype)
+
+# Add statistical test results (pairwise Wilcoxon tests)
+pdf("ModuleScore_TZM_Boxplots_Macs.pdf", width = 4, height = 5)
+p + stat_compare_means(
+  method = "wilcox.test",
+  label = "p.signif", comparisons = list(c("Pla2g2d+", "Pla2g2d-")))
+dev.off()
+```
+
+# Fig4Q
 
 ```{r}
 x <- subset(sce, celltype == "CD8T")

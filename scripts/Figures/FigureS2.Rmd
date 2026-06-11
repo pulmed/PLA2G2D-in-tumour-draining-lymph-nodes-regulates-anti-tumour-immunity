@@ -1,0 +1,645 @@
+---
+title: "Hyperion IMC data analysis"
+output: html_document
+date: "2025-10-13"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+spe <- readRDS("spe_TDLN_Mela.rds")
+images = readRDS("images_spe.rds")
+masks = readRDS("masks_spe.rds")
+```
+
+# FigS2A
+
+```{r, fig.width= 12, fig.height=12}
+library(dittoSeq)
+library(scater)
+library(patchwork)
+library(cowplot)
+library(viridis)
+
+p1 <- dittoDimPlot(spe,
+                   max = 0.85,
+                   var = "CD20", 
+                   assay = "exprs",
+                   reduction.use = "UMAP_ki67Corrected", 
+                   opacity = 0.5, order = "increasing",
+                   adjustment = "relative.to.max",
+                   size = 0.1, do.label = TRUE,  
+                   max.color = "red",
+                   min.color = "gray90")
+
+
+p2 <- dittoDimPlot(spe,
+                   max = 0.85,
+                   var = "CD4", 
+                   assay = "exprs", order = "increasing",
+                   reduction.use = "UMAP_ki67Corrected", 
+                   adjustment = "relative.to.max", 
+                   size = 0.1, do.label = TRUE, 
+                   max.color = "red", 
+                   min.color = "gray90")
+
+
+p3 <- dittoDimPlot(spe, 
+                   max = 0.85,
+                   var = "CD8a", 
+                   assay = "exprs", order = "increasing",
+                   reduction.use = "UMAP_ki67Corrected", 
+                   adjustment = "relative.to.max", 
+                   size = 0.1, 
+                   max.color = "red", 
+                   min.color = "gray90")
+
+p4 <- dittoDimPlot(spe,
+                   max = 0.85, 
+                   var = "CD68", 
+                   assay = "exprs", order = "increasing",
+                   reduction.use = "UMAP_ki67Corrected", 
+                   adjustment = "relative.to.max",
+                   size = 0.1, 
+                   max.color = "red", 
+                   min.color = "gray90")
+
+p5 <- dittoDimPlot(spe,
+                   max = 0.85,
+                   var = "SOX10",
+                   assay = "exprs", order = "increasing",
+                   reduction.use = "UMAP_ki67Corrected", 
+                   adjustment = "relative.to.max",
+                   size = 0.1, do.label = TRUE, 
+                   max.color = "red", 
+                   min.color = "gray90")
+
+p6 <- dittoDimPlot(spe, 
+                   max = 0.85,
+                   var = "CD11c",
+                   assay = "exprs", order = "increasing",
+                   reduction.use = "UMAP_ki67Corrected", 
+                   adjustment = "relative.to.max",
+                   size = 0.1, 
+                   max.color = "red", 
+                   min.color = "gray90")
+
+p7 <- dittoDimPlot(spe,
+                   max = 0.85,
+                   var = "CD163",
+                   assay = "exprs", order = "increasing",
+                   reduction.use = "UMAP_ki67Corrected",
+                   adjustment = "relative.to.max",
+                   size = 0.1, 
+                   max.color = "red", 
+                   min.color = "gray90")
+
+p8 <- dittoDimPlot(spe,
+                   max = 0.85,
+                   var = "CD169",
+                   assay = "exprs", order = "increasing",
+                   reduction.use = "UMAP_ki67Corrected",
+                   adjustment = "relative.to.max",
+                   size = 0.1, do.label = TRUE, 
+                   max.color = "red", 
+                   min.color = "gray90")
+
+p9 <- dittoDimPlot(spe,
+                   max = 0.85,
+                   var = "HLA-DR",
+                   assay = "exprs", order = "increasing",
+                   reduction.use = "UMAP_ki67Corrected", 
+                   adjustment = "relative.to.max",
+                   size = 0.1, do.label = TRUE, 
+                   max.color = "red", 
+                   min.color = "gray90")
+
+png("FigS2A_dimplot_markers_relative.to.max_max0.60SOX10CD11c.png", width = 12, height = 9, units = "in", res = 1500)
+
+(p1 + p2 + p3)/(p4 + p5 + p6)/(p7 + p8 + p9)
+dev.off()
+```
+
+# FigS2B
+
+
+```{r}
+library(networkD3)
+library(dplyr)
+library(stringr)
+
+df <- data.frame(colData(spe))
+
+links <- df %>%
+  group_by(celltype_level1, celltype_level2) %>%
+  summarise(value = n())
+
+# From these flows we need to create a node data frame: it lists every entities involved in the flow
+nodes <- data.frame(
+  name=c(as.character(links$celltype_level1), 
+  as.character(links$celltype_level2)) %>% unique()
+)
+ 
+# With networkD3, connection must be provided using id, not using real name like in the links dataframe.. So we need to reformat it.
+links$IDsource <- match(links$celltype_level1, nodes$name)-1 
+links$IDtarget <- match(links$celltype_level2, nodes$name)-1
+ 
+# Make the Network
+p <- sankeyNetwork(Links = links, Nodes = nodes,
+              Source = "IDsource", Target = "IDtarget",
+              Value = "value", NodeID = "name", fontSize = 14, nodeWidth = 30,
+              fontFamily = "sans-serif", height = 1000, width = 600,
+              sinksRight=FALSE)
+p
+
+# you save it as an html
+saveNetwork(p, "sankey.html")
+
+# Transform to PDF
+library(webshot2)
+webshot("sankey.html", file = "sankey.pdf")
+```
+
+# FigS2C
+
+```{r}
+library(data.table)
+library(dplyr)
+library(tidyr)
+library(rstatix)
+
+df <- unique(as.data.frame(table(spe$ID, spe$celltype_level1)))
+colnames(df) <- c("ID", "celltype", "Freq")
+
+df$Patient.ID <- spe$Patient.ID[match(df$ID, spe$ID)]
+df$Group <- spe$Group[match(df$ID, spe$ID)]
+df$Location <- spe$Location[match(df$ID, spe$ID)]
+df$Group.location <- spe$Group.location[match(df$ID, spe$ID)]
+df$Cells_per_mm2 <- df$Freq * 4
+
+compare_to_ref <- function(data, ref_group, pseudocount = 0.1) {
+  
+  ref_vals <- data %>%
+    filter(Group == ref_group) %>%
+    pull(Cells_per_mm2)
+  
+  data %>%
+    filter(Group != ref_group) %>%
+    group_by(Group) %>%
+    summarise(
+      mean_group = mean(Cells_per_mm2, na.rm = TRUE),
+      mean_ref   = mean(ref_vals, na.rm = TRUE),
+      log2FC     = log2((mean_group + pseudocount) / (mean_ref + pseudocount)),
+      p_value    = if (length(Cells_per_mm2) > 1 && length(ref_vals) > 1)
+                     t.test(Cells_per_mm2, ref_vals)$p.value
+                   else NA_real_,
+      statistic  = if (length(Cells_per_mm2) > 1 && length(ref_vals) > 1)
+                     t.test(Cells_per_mm2, ref_vals)$statistic
+                   else NA_real_,
+      .groups = "drop"
+    )
+}
+
+results_df <- df %>%
+  group_by(celltype, Location) %>%
+  group_modify(~ compare_to_ref(.x, "HC")) %>%
+  ungroup()
+
+dotCOLS = rev(c("#a6d8f0","#f9b282", "#26597E"))
+
+barCOLS = rev(c("#008fd5","#de6b35", "#0E212F"))
+
+p <- ggplot(subset(results_df, results_df$p_value < 0.05 & Location == "Paracortex"),
+            aes(x = celltype, y = log2FC, col = Group, fill = Group)) +
+  geom_hline(yintercept = 0, lty = 2, linewidth = 0.5) +
+  geom_point(size = 4, shape = 21, colour = "white", stroke = 0.5,
+             position = position_dodge(width = 0), alpha = 0.5) +
+  scale_x_discrete(name = "Celltype") +
+  scale_y_continuous(name = "Log2FoldChange") +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)
+  ) +
+  guides(color = guide_legend(reverse = TRUE), fill = guide_legend(reverse = TRUE))
+```
+
+# FigS2D
+
+```{r}
+library(dplyr)
+library(Seurat)
+library(ggplot2)
+
+data <- as.data.frame(table(spe$Group, spe$Location, spe$celltype_level2))
+data$Freq <- as.numeric(data$Freq)
+
+# Renaming the columns for clarity
+colnames(data) <- c("Group", "Location", "Celltype", "Freq")
+
+data <- data  %>%
+  group_by(Group, Location, Celltype) %>%
+  summarise(n = sum(Freq)) %>%
+  mutate(percentage = n / sum(n))
+
+data$Time = recode(data$Location, 
+                   "Intratumoral" = 1,
+                   "Peritumoral" = 2,
+                   "Paracortex" = 3,
+                   "Cortex" = 4)
+```
+
+# FigS2E
+
+
+```{r}
+library(data.table)
+library(dplyr)
+library(tidyr)
+library(rstatix)
+
+  df <- as.data.frame(subset(colData(spe), Patient.ID != "Patient01_Ctrl")) %>%
+  group_by(ID, Patient.ID, Location, celltype_level1, Group) %>%
+  summarise(Freq = n(),
+            Cells_per_mm2 = Freq * 4)
+
+p1 <- ggbarplot(subset(df, Location == "Paracortex" & celltype_level1 == "DC" & (Group == "S3_DF" | Group == "S3_R")), 
+          x = "Group", 
+          y = "Cells_per_mm2",
+          add = c("mean_se", "jitter"), 
+          color = "black", 
+          fill = "Group", 
+          title = "Paracortex - DC", 
+          jitter = 0.15) + 
+          stat_compare_means(comparisons = 
+                               list(c("S3_DF", "S3_R")), 
+                                    #c("S2_DF", "S2_R")), 
+                             method = "t.test") +
+          theme(legend.position="none", 
+                axis.text.x = element_text(angle = 45, hjust=1))
+
+p2 <- ggbarplot(subset(df, Location == "Paracortex" & celltype_level1 == "Macrophages" & (Group == "S3_DF" | Group == "S3_R")), 
+          x = "Group", 
+          y = "Cells_per_mm2",
+          add = c("mean_se", "jitter"), 
+          color = "black", 
+          fill = "Group", 
+          title = "Paracortex - Macrophages", 
+          jitter = 0.15) + 
+          stat_compare_means(comparisons = 
+                               list(c("S3_DF", "S3_R")), 
+                                    #c("S2_DF", "S2_R")), 
+                             method = "t.test") +
+          theme(legend.position="none", 
+                axis.text.x = element_text(angle = 45, hjust=1))
+
+print(p1)
+print(p2)
+
+```
+
+# FigS2F
+
+```{r, fig.width=3, fig.height=5}
+library(dplyr)
+
+df <- as.data.frame(subset(colData(spe), Patient.ID != "Patient01_Ctrl")
+
+
+df_ratio <- as.data.frame(colData(spe)) %>%
+  group_by(ID, Location, celltype_level1, Group) %>%
+  summarise(Count = n()) %>%
+  spread(key = celltype_level1, value = Count, fill = 0) %>%
+  mutate(Ratio_DC_Macrophages = DC/Macrophages)
+
+df_ratio$Group <- factor(df_ratio$Group, levels = c("HC", "S2_DF", "S2_R", "S3_DF", "S3_R"))
+
+ggbarplot(df_ratio, x = "Group", y = "Ratio_DC_Macrophages",
+add = c("mean_se", "jitter"), color = "black", fill = "Group", title = "All locations",   jitter = 0.15) + 
+stat_compare_means(comparisons = list(c("S3_DF", "S3_R"), c("S2_DF", "S2_R")), method = "t.test", ) +
+theme(legend.position="none", axis.text.x = element_text(angle = 45, hjust=1))
+
+```
+
+# FigS2G
+
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(SpatialExperiment)
+library(imcRtools)
+
+spe.og <- readRDS("spe_TDLN_Mela.rds")
+spe <- readRDS("spe_RFC_annotated.rds")
+
+df.mes <- unique(as.data.frame(table(spe$sample_id, spe$celltype_level2)))
+colnames(df.mes) <- c("ID", "celltype", "Freq")
+df.mes$ID <- sub("_(0)([0-9]+)", "_\\2", df.mes$ID)
+df.mes$col <- paste0(df.mes$ID, "_", df.mes$celltype)
+
+df.bod <- unique(as.data.frame(table(spe.og$ID, spe.og$celltype_level2)))
+colnames(df.bod) <- c("ID", "celltype", "Freq")
+df.bod$col <- paste0(df.bod$ID, "_", df.bod$celltype)
+
+df.mes <- df.mes[df.mes$col %in% df.bod$col,]
+df.bod <- df.mes[df.bod$col %in% df.mes$col,]
+
+df.mes$group <- "Mesmer"
+df.bod$group <- "Bodenmiller"
+df <- rbind(df.mes, df.bod)
+
+summary_df <- df %>%
+  filter(!is.na(celltype)) %>% 
+  group_by(celltype, group) %>%
+  summarise(
+    mean_freq = mean(Freq, na.rm = TRUE),
+    se_freq   = sd(Freq, na.rm = TRUE) / sqrt(n()),
+    .groups = "drop"
+  )
+
+ggplot(summary_df, aes(x = celltype, y = mean_freq, fill = group)) +
+  geom_col(position = position_dodge(width = 0.8)) +
+  geom_errorbar(
+    aes(ymin = mean_freq - se_freq, ymax = mean_freq + se_freq),
+    width = 0.2,
+    position = position_dodge(width = 0.8)
+  ) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(
+    x = "Cell type",
+    y = "Mean Frequency",
+    fill = "Group"
+  )
+
+```
+
+# FigS2H
+
+## Mesmer
+
+```{r, fig.width=5, fig.height=7}
+library(data.table)
+library(dplyr)
+library(tidyr)
+library(rstatix)
+library(ggrepel)
+
+df <- unique(as.data.frame(table(spe$ID, spe$celltype_level2)))
+colnames(df) <- c("ID", "celltype", "Freq")
+
+df$Patient.ID <- spe$Patient[match(df$ID, spe$ID)]
+df$Group <- spe$Group[match(df$ID, spe$ID)]
+df$Location <- spe$Location[match(df$ID, spe$ID)]
+df$Group.location <- spe$Group.location[match(df$ID, spe$ID)]
+df$Cells_per_mm2 <- df$Freq * 4
+```
+```{r,  fig.width=5, fig.height=7}
+vol.input <- df %>%
+  group_by(Patient.ID, celltype, Location, Group) 
+
+ls <- list()
+
+for(cell in unique(spe$celltype_level2)){
+  
+  filtered_data <- subset(vol.input, celltype == cell)
+  
+  pwc <- filtered_data %>%
+  group_by(Location) %>%
+  t_test(Cells_per_mm2 ~ Group)
+  
+  pwc.filter <- subset(pwc, group1 == "S3_DF" & group2 == "S3_R")
+  pwc.filter$celltype <- cell
+  
+  ls[[cell]] <- pwc.filter
+}
+
+ls.2 <- rbindlist(ls, fill=TRUE)
+ls.2$Location.celltype <- paste0(ls.2$Location,"_", ls.2$celltype) 
+
+counts <- vol.input %>%
+  group_by(celltype, Location, Group) %>%
+  dplyr::summarise(counts = mean(Cells_per_mm2))
+
+counts_DF = subset(counts, Group == "S3_DF")
+counts_DF$Location.celltype <- paste0(counts_DF$Location,"_", counts_DF$celltype) 
+
+counts_R = subset(counts, Group == "S3_R")
+counts_R$Location.celltype <- paste0(counts_R$Location,"_", counts_R$celltype)
+
+###
+
+# Use the left_join function to merge the dataframes based on Location.celltype
+merged_df <- left_join(ls.2, counts_DF, by = "Location.celltype")
+
+# Update the ls.2$group1_counts column with counts from counts_DF
+ls.2 <- merged_df %>%
+  dplyr::select(-c(Location.y, Group)) %>%  # Remove the counts column, if desired
+  rename(group1_counts = counts)  # Rename the column to group1_counts, if needed
+
+# Use the left_join function to merge the dataframes based on Location.celltype
+merged_df <- left_join(ls.2, counts_R, by = "Location.celltype")
+
+# Update the ls.2$group1_counts column with counts from counts_DF
+ls.2 <- merged_df %>%
+  dplyr::select(-c(Location, Group)) %>%  # Remove the counts column, if desired
+  rename(group2_counts = counts)  # Rename the column to group1_counts, if needed
+
+ls.2$L2Fchange <- log2(ls.2$group1_counts+1) - log2(ls.2$group2_counts+1)
+
+library(EnhancedVolcano)
+for (i in unique(ls.2$Location.x)){
+  
+Location = i
+
+    input = as.data.frame(subset(ls.2, Location.x == Location))
+    rownames(input) <- input$celltype
+
+      ##### Define custom colors #####
+      # set the base colour as grey
+      keyvals <- rep('#d3d3d3', nrow(input))
+
+      #set the base name/label as 'NS'
+      names(keyvals) <- rep('NS', nrow(input))
+
+      # modify keyvals for variables with fold change > 1 and Padj < 0.05
+      keyvals[which(input$L2Fchange > 0 &
+                      input$p.adj < 0.05)] <- '#ba181b' #color code
+      names(keyvals)[which(input$L2Fchange > 0 &
+                             input$p.adj < 0.05)] <- 'DF' #Upregulated genes
+
+      # modify keyvals for variables with fold change < -1
+      keyvals[which(input$L2Fchange < 0 &
+                      input$p.adj < 0.05)] <- '#1a659e' #color code
+      names(keyvals)[which(input$L2Fchange < 0 &
+                             input$p.adj < 0.05)] <- 'R' #Downregulated genes
+    
+     volcano <- EnhancedVolcano(input,
+                           lab = input$celltype,         # Labels of your points
+                           title = Location,                # Title of your volcanoplot
+                           x = "L2Fchange",            # What to plot on the x-axis
+                           y = "p.adj",         # What to plot on the y-axis
+                           pCutoff = 0.05,            # Adj. P-value cutoff
+                           FCcutoff = 0,              # Fold change cutoff
+                           #selectLab = c(),          # Write down comma delimited genes to only show these genes
+                           drawConnectors = TRUE,     # Draw a connecting line to your label
+                           #arrowheads = F,           # Whether the connectors should have a arrowhead
+                           #widthConnectors = 0.1,    # How thick the line of the connectors should be
+                           #colConnectors = "black",  # Colour of the connectors
+                           #boxedLabels = TRUE,       # Draw a box around your label
+                           #legendVisible = F,        # standard is TRUE
+                           colAlpha = 0.6,            # transparency of points
+                           xlim = c(-4.5, 4.5),      # change axis range
+                           ylim = c(0,4.5),           # change axis range
+                           pointSize = 3,             # Define size of the dots
+                           labSize = 3,            # Define size of the labels
+                           gridlines.minor = FALSE,   # Add minor grid to background
+                           gridlines.major = FALSE,   # Add major grid to background
+                           cutoffLineType = 'dashed',  # Add cutoff lines for Log2Fold/Pval. 
+                           cutoffLineCol = "#d3d3d3", # Colour of the cutoff line
+                           border = "full",           # Chose "full", "partial" or "blank"
+                           borderColour = "black",
+                           borderWidth = 0.5,
+                           colCustom = keyvals #Add custom colors for your values as defined above 
+                           ) #+ coord_flip() #Flip the volcanoplot on its side
+    
+  
+    print(volcano)
+```
+
+## Bodenmiller Pipeline
+
+```{r, fig.width=5, fig.height=7}
+library(data.table)
+library(dplyr)
+library(tidyr)
+library(rstatix)
+library(ggrepel)
+
+df <- unique(as.data.frame(table(spe.og$ID, spe.og$celltype_level2)))
+colnames(df) <- c("ID", "celltype", "Freq")
+
+df$Patient.ID <- spe.og$Patient.ID[match(df$ID, spe.og$ID)]
+df$Group <- spe.og$Group[match(df$ID, spe.og$ID)]
+df$Location <- spe.og$Location[match(df$ID, spe.og$ID)]
+df$Group.location <- spe.og$Group.location[match(df$ID, spe.og$ID)]
+df$Cells_per_mm2 <- df$Freq * 4
+```
+
+
+```{r,  fig.width=5, fig.height=7}
+vol.input <- df %>%
+  group_by(Patient.ID, celltype, Location, Group) 
+
+ls <- list()
+
+for(cell in unique(spe.og$celltype_level2)){
+  
+  filtered_data <- subset(vol.input, celltype == cell)
+  
+  pwc <- filtered_data %>%
+  group_by(Location) %>%
+  t_test(Cells_per_mm2 ~ Group)
+  
+  pwc.filter <- subset(pwc, group1 == "S3_DF" & group2 == "S3_R")
+  pwc.filter$celltype <- cell
+  
+  ls[[cell]] <- pwc.filter
+}
+
+ls.2 <- rbindlist(ls, fill=TRUE)
+ls.2$Location.celltype <- paste0(ls.2$Location,"_", ls.2$celltype) 
+
+counts <- vol.input %>%
+  group_by(celltype, Location, Group) %>%
+  dplyr::summarise(counts = mean(Cells_per_mm2))
+
+counts_DF = subset(counts, Group == "S3_DF")
+counts_DF$Location.celltype <- paste0(counts_DF$Location,"_", counts_DF$celltype) 
+
+counts_R = subset(counts, Group == "S3_R")
+counts_R$Location.celltype <- paste0(counts_R$Location,"_", counts_R$celltype)
+
+###
+
+# Use the left_join function to merge the dataframes based on Location.celltype
+merged_df <- left_join(ls.2, counts_DF, by = "Location.celltype")
+
+# Update the ls.2$group1_counts column with counts from counts_DF
+ls.2 <- merged_df %>%
+  dplyr::select(-c(Location.y, Group)) %>%  # Remove the counts column, if desired
+  rename(group1_counts = counts)  # Rename the column to group1_counts, if needed
+
+# Use the left_join function to merge the dataframes based on Location.celltype
+merged_df <- left_join(ls.2, counts_R, by = "Location.celltype")
+
+# Update the ls.2$group1_counts column with counts from counts_DF
+ls.2 <- merged_df %>%
+  dplyr::select(-c(Location, Group)) %>%  # Remove the counts column, if desired
+  rename(group2_counts = counts)  # Rename the column to group1_counts, if needed
+
+ls.2$L2Fchange <- log2(ls.2$group1_counts+1) - log2(ls.2$group2_counts+1)
+
+library(EnhancedVolcano)
+for (i in unique(ls.2$Location.x)){
+  
+Location = i
+
+    input = as.data.frame(subset(ls.2, Location.x == Location))
+    rownames(input) <- input$celltype
+
+      ##### Define custom colors #####
+      # set the base colour as grey
+      keyvals <- rep('#d3d3d3', nrow(input))
+
+      #set the base name/label as 'NS'
+      names(keyvals) <- rep('NS', nrow(input))
+
+      # modify keyvals for variables with fold change > 1 and Padj < 0.05
+      keyvals[which(input$L2Fchange > 0 &
+                      input$p.adj < 0.05)] <- '#ba181b' #color code
+      names(keyvals)[which(input$L2Fchange > 0 &
+                             input$p.adj < 0.05)] <- 'DF' #Upregulated genes
+
+      # modify keyvals for variables with fold change < -1
+      keyvals[which(input$L2Fchange < 0 &
+                      input$p.adj < 0.05)] <- '#1a659e' #color code
+      names(keyvals)[which(input$L2Fchange < 0 &
+                             input$p.adj < 0.05)] <- 'R' #Downregulated genes
+    
+     volcano <- EnhancedVolcano(input,
+                           lab = input$celltype,         # Labels of your points
+                           title = Location,                # Title of your volcanoplot
+                           x = "L2Fchange",            # What to plot on the x-axis
+                           y = "p.adj",         # What to plot on the y-axis
+                           pCutoff = 0.05,            # Adj. P-value cutoff
+                           FCcutoff = 0,              # Fold change cutoff
+                           #selectLab = c(),          # Write down comma delimited genes to only show these genes
+                           drawConnectors = TRUE,     # Draw a connecting line to your label
+                           #arrowheads = F,           # Whether the connectors should have a arrowhead
+                           #widthConnectors = 0.1,    # How thick the line of the connectors should be
+                           #colConnectors = "black",  # Colour of the connectors
+                           #boxedLabels = TRUE,       # Draw a box around your label
+                           #legendVisible = F,        # standard is TRUE
+                           colAlpha = 0.6,            # transparency of points
+                           xlim = c(-4.5, 4.5),      # change axis range
+                           ylim = c(0,4.5),           # change axis range
+                           pointSize = 3,             # Define size of the dots
+                           labSize = 3,            # Define size of the labels
+                           gridlines.minor = FALSE,   # Add minor grid to background
+                           gridlines.major = FALSE,   # Add major grid to background
+                           cutoffLineType = 'dashed',  # Add cutoff lines for Log2Fold/Pval. 
+                           cutoffLineCol = "#d3d3d3", # Colour of the cutoff line
+                           border = "full",           # Chose "full", "partial" or "blank"
+                           borderColour = "black",
+                           borderWidth = 0.5,
+                           colCustom = keyvals #Add custom colors for your values as defined above 
+                           ) #+ coord_flip() #Flip the volcanoplot on its side
+    
+  
+    print(volcano)
+    
+}
+```

@@ -1,0 +1,157 @@
+---
+title: "Untitled"
+author: "Anneloes van Krimpen"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Data
+
+```{r}
+library(SpatialExperiment)
+library(imcRtools)
+
+spe.og <- readRDS("spe_TDLN_Mela.rds")
+spe <- readRDS("spe_mesmer.rds")
+
+```
+
+## Train the classifier
+
+```{r}
+library(caret)
+
+# Randomly split into train and test data
+set.seed(221029)
+cur_cells <- sample(seq_len(ncol(spe.og)), 100000)
+x <- spe.og[,cur_cells]
+
+trainIndex <- createDataPartition(factor(x$celltype_level2), p = 0.75)
+
+train_spe <- x[,trainIndex$Resample1]
+test_spe <- x[,-trainIndex$Resample1]
+
+# Define fit parameters for 5-fold cross validation
+fitControl <- trainControl(method = "cv",
+                           number = 5)
+
+# Select the arsinh-transformed counts for training
+cur_mat <- t(assay(train_spe, "exprs")[rowData(train_spe)$use_channel,])
+
+# Train a random forest classifier
+rffit <- train(x = cur_mat, 
+               y = factor(train_spe$celltype_level2),
+               method = "rf", ntree = 1000,
+               tuneLength = 5,
+               trControl = fitControl)
+
+rffit
+```
+
+## Classifier performance
+
+```{r}
+ggplot(rffit) + 
+  geom_errorbar(data = rffit$results,
+                aes(ymin = Accuracy - AccuracySD,
+                    ymax = Accuracy + AccuracySD),
+                width = 0.4) +
+    theme_classic(base_size = 15)
+
+plot(varImp(rffit))
+```
+
+## Test the classifier
+
+```{r}
+# Select the arsinh-transformed counts of the test data
+cur_mat <- t(assay(test_spe, "exprs")[rowData(test_spe)$use_channel,])
+
+# Predict the cell phenotype labels of the test data
+set.seed(231019)
+cur_pred <- predict(rffit, newdata = cur_mat)
+
+cm <- confusionMatrix(data = cur_pred, 
+                      reference = factor(test_spe$celltype_level2), 
+                      mode = "everything")
+
+cm
+```
+
+## Visualise accuracy
+
+```{r}
+library(tidyverse)
+
+data.frame(cm$byClass) %>%
+  mutate(class = sub("Class: ", "", rownames(cm$byClass))) %>%
+  ggplot() + 
+  geom_point(aes(1 - Specificity, Sensitivity, 
+                 size = Detection.Rate,
+                 fill = class),
+             shape = 21) + 
+  #scale_fill_manual(values = metadata(spe)$color_vectors$celltype_level2) +
+  theme_classic(base_size = 15) + 
+  ylab("Sensitivity (TPR)") +
+  xlab("1 - Specificity (FPR)")
+```
+
+## Classify new data
+
+```{R}
+# Select the arsinh-transformed counts of the unlabeled data for prediction
+cur_mat <- t(assay(spe, "exprs")[rowData(spe.og)$use_channel,])
+
+# Predict the cell phenotype labels of the unlabeled data
+set.seed(231014)
+cell_class <- as.character(predict(rffit, 
+                                   newdata = cur_mat, 
+                                   type = "raw"))
+names(cell_class) <- rownames(cur_mat)
+
+table(cell_class)
+```
+
+## Check the accuracy
+
+```{r}
+# Extract prediction probabilities for each cell
+set.seed(231014)
+cell_prob <- predict(rffit, 
+                     newdata = cur_mat, 
+                     type = "prob")
+
+library(ggridges)
+
+# Distribution of maximum probabilities
+tibble(max_prob = rowMax(as.matrix(cell_prob)),
+       type = cell_class) %>%
+    ggplot() +
+        geom_density_ridges(aes(x = max_prob, y = cell_class, fill = cell_class)) +
+        #scale_fill_manual(values = metadata(spe)$color_vectors$celltype_level2) +
+        theme_classic(base_size = 15) +
+        xlab("Maximum probability") +
+        ylab("Cell type") + 
+        xlim(c(0,1.2))
+```
+
+## Label cells
+
+```{r}
+# Store labels in SpatialExperiment onject
+cell_labels <- spe$celltype_level2
+cell_labels[colnames(spe)] <- cell_class
+spe$celltype_level2 <- cell_labels 
+
+table(spe$celltype_level2, spe$Patient)
+
+```
+```{r}
+saveRDS(spe, "spe_RFC_annotated.rds")
+```
+
+

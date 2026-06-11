@@ -1,0 +1,159 @@
+---
+title: "Hyperion IMC data analysis"
+output: html_document
+date: "2025-10-13"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+spe <- readRDS("spe_TDLN_Mela.rds")
+images = readRDS("images_spe.rds")
+masks = readRDS("masks_spe.rds")
+```
+
+# FigS1B
+
+```{r, echo=FALSE}
+library(mclust)
+library(ggplot2)
+library(ggrepel)
+
+set.seed(220224)
+mat <- apply(assay(spe, "exprs"), 1, function(x){
+    cur_model <- Mclust(x, G = 2)
+    mean1 <- mean(x[cur_model$classification == 1])
+    mean2 <- mean(x[cur_model$classification == 2])
+    
+    signal <- ifelse(mean1 > mean2, mean1, mean2)
+    noise <- ifelse(mean1 > mean2, mean2, mean1)
+    
+    return(c(snr = signal/noise, ps = signal))
+})
+    
+cur_snr <- t(mat) %>% as.data.frame() %>% 
+        mutate(marker = colnames(mat))
+
+cur_snr %>% ggplot() +
+    geom_point(aes(log2(ps), log2(snr))) +
+    geom_label_repel(aes(log2(ps), log2(snr), label = marker)) +
+    theme_minimal(base_size = 15) + ylab("Signal-to-noise ratio [log2]") +
+    xlab("Signal intensity [log2]")
+```
+
+# FigS1D
+```{r}
+number = c("P001_11", "P001_1", "P001_20", "P001_12")
+
+plotPixels(images[number], 
+           colour_by = c("Coll-I", "CD45", "SOX10", "CD31", "CD68", "D2-40"),
+           bcg = list(`Coll-I` = c(0, 6, 1),
+                      CD45 = c(0, 14, 1),
+                      `CD68` = c(0, 10, 1),
+                      `SOX10` = c(0, 6, 1.1),
+                      `CD31` = c(0, 8, 1),
+                      `D2-40` = c(0, 6, 1.1)),
+           colour = list(`Coll-I` = c("black", "magenta"),
+                         CD45 = c("black","cyan"),
+                         CD68 = c("black","blue"),
+                         SOX10 = c("black","yellow"),
+                         CD31 = c("black","red"),
+                         `D2-40` = c("black","green")
+                         ))
+
+plotPixels(images[number], 
+           colour_by = c("CD169", "CD11c", "CD15", "HLA-DR", "CD68"),
+           bcg = list(`CD169` = c(0, 6, 1),
+                      CD11c = c(0, 6, 1),
+                      `CD15` = c(0, 10, 1.1),
+                      `HLA-DR` = c(0, 10, 1),
+                      `CD68` = c(0, 8, 1.1)),
+           colour = list(`CD169` = c("black", "yellow"),
+                         CD11c = c("black","cyan"),
+                         CD15 = c("black","green"),
+                         `HLA-DR` = c("black","red"),
+                         CD68 = c("black","magenta")
+                         ))
+
+plotPixels(images[number], 
+           colour_by = c("CD3", "TCF1", "CD20", "Ki-67"),
+           bcg = list(`CD3` = c(0, 8, 1.1),
+                      TCF1 = c(0, 6, 1),
+                      `CD20` = c(0, 10, 1),
+                      `Ki-67` = c(0, 6, 1)),
+           colour = list(`CD3` = c("black", "cyan"),
+                         TCF1 = c("black","magenta"),
+                         CD20 = c("black","green"),
+                         `Ki-67` = c("black","red")
+                         ))
+
+plotPixels(images[number], 
+           colour_by = c("CD4", "FoxP3", "TOX", "CD8a"),
+           bcg = list(`CD4` = c(0, 6, 1),
+                      FoxP3 = c(0, 10, 1.1),
+                      `TOX` = c(0, 10, 1.2),
+                      `CD8a` = c(0, 6, 1)),
+           colour = list(`CD4` = c("black", "magenta"),
+                         FoxP3 = c("black","cyan"),
+                         `TOX` = c("black","green"),
+                         CD8a = c("black","red")
+                         ))
+
+plotCells(masks[number],
+          object = spe, 
+          cell_id = "ObjectNumber", 
+          img_id = "sample_id",
+          colour_by = "celltype_level1",
+          colour = list(celltype_level1 = metadata(spe)$color_vectors$celltype_level1))
+
+dev.off()
+```
+
+# FigS1E
+
+```{r}
+library(dittoSeq)
+
+dittoBarPlot(spe, 
+             var = "Group", 
+             group.by = "Location") +
+    scale_fill_manual(values = metadata(spe)$color_vectors$Group)
+```
+
+# FigS1F
+
+```{r}
+library(dittoSeq)
+
+dittoBarPlot(spe, 
+             var = "Location", 
+             group.by = "Group") +
+    scale_fill_manual(values = metadata(spe)$color_vectors$Location)
+```
+
+# FigS1G
+
+```{r}
+dittoDimPlot(spe, 
+                   var = "Patient.ID", 
+                   reduction.use = "UMAP_ki67Corrected", 
+                   size = 0.2, opacity = 0.3, order = "randomize",
+                   do.label = FALSE) +
+   theme(legend.title = element_blank()) +
+  ggtitle("Patients")
+```
+
+# FigS1H
+
+```{r}
+dittoDimPlot(spe, 
+                   var = "Location", 
+                   reduction.use = "UMAP_ki67Corrected", 
+                   size = 0.2, opacity = 0.3, order = "randomize",
+                   do.label = FALSE) +
+  scale_color_manual(values = metadata(spe)$color_vectors$Location) +
+   theme(legend.title = element_blank()) +
+  ggtitle("Location")
+```
