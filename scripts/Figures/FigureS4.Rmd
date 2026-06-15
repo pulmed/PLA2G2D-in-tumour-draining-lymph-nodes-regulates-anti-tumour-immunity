@@ -1,0 +1,326 @@
+---
+title: "Supplementary Figure 4"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# FigS4A+D
+
+```{r}
+library(xlsx)
+library(reshape2)
+
+results = read.delim("LMM_DFxR.txt")
+df <- subset(results, results$Subset == "CD11c")
+
+##  feature 1: LOGF2
+    geneList <- df$Estimate
+
+##  feature 2: named vector
+    names(geneList) <- df$Gene
+
+##  feature 3: decreasing order
+    geneList <- sort(geneList, decreasing = TRUE)
+    head(geneList)
+    class(geneList) #should be numeric
+
+##  Create a LogF2 cut-off e.g. > 1
+    gene <- geneList[abs(geneList) > 0.5] #Change log2fold cutoff here
+    head(gene)
+
+####### Creating a custom pathway #############################################################
+##  Make a tab-delimited file for your custom pathways
+##  [First column: name of pathway][Following columns: genes belonging to pathway]
+## !!! Make sure this is in the right species format !!!
+
+    path <- read.xlsx("DC_combined.xlsx", sheetIndex = 1)
+    
+    path.melt = melt(t(path))
+    
+    path.melt = data.frame(signature = path$Signature
+                           gene = path$Genes)
+
+####### Running the GSEA #############################################################
+
+    em <- GSEA(geneList = geneList,
+                    exponent = 1, #standard
+                    minGSSize = 10, #Minimum amount of genes in one geneset
+                    maxGSSize = 1000, #Maximum amount of genes in one geneset
+                    pAdjustMethod = "BH", 
+                    TERM2GENE = path.melt, #genesets
+                    pvalueCutoff = 1, #put 1 to see all pathways
+                    verbose = TRUE)
+ 
+##  Save your GSEA output
+    setwd("YOUR_PATH") #where you will write your file
+
+    head(as.data.frame(cbind(em@result$ID, em@result$pvalue, em@result$p.adjust, em@result$NES)))
+    xy <- as.data.frame(cbind(em@result$ID, em@result$pvalue, em@result$p.adjust, em@result$NES))
+    colnames(xy) <- c("Pathway", "P-value", "Adj. P-value", "NES")
+    write.table(xy, "FILENAME.txt", sep = "\t", row.names = F, col.names = T)
+``` 
+
+library(xlsx)
+library(reshape2)
+
+results = read.delim("LMM_DFxR.txt")
+df <- subset(results, results$Subset == "CD68")
+
+##  feature 1: LOGF2
+    geneList <- df$Estimate
+
+##  feature 2: named vector
+    names(geneList) <- df$Gene
+
+##  feature 3: decreasing order
+    geneList <- sort(geneList, decreasing = TRUE)
+    head(geneList)
+    class(geneList) #should be numeric
+
+##  Create a LogF2 cut-off e.g. > 1
+    gene <- geneList[abs(geneList) > 0.5] #Change log2fold cutoff here
+    head(gene)
+
+####### Creating a custom pathway #############################################################
+##  Make a tab-delimited file for your custom pathways
+##  [First column: name of pathway][Following columns: genes belonging to pathway]
+## !!! Make sure this is in the right species format !!!
+
+    path <- read.xlsx("Nat Comm 2024_TAM atlas.xlsx", sheetIndex = 1)
+    
+    path.melt = melt(t(path))
+    
+    path.melt = data.frame(signature = path$Signature
+                           gene = path$Genes)
+
+####### Running the GSEA #############################################################
+
+    em <- GSEA(geneList = geneList,
+                    exponent = 1, #standard
+                    minGSSize = 10, #Minimum amount of genes in one geneset
+                    maxGSSize = 1000, #Maximum amount of genes in one geneset
+                    pAdjustMethod = "BH", 
+                    TERM2GENE = path.melt, #genesets
+                    pvalueCutoff = 1, #put 1 to see all pathways
+                    verbose = TRUE)
+ 
+##  Save your GSEA output
+    setwd("YOUR_PATH") #where you will write your file
+
+    head(as.data.frame(cbind(em@result$ID, em@result$pvalue, em@result$p.adjust, em@result$NES)))
+    xy <- as.data.frame(cbind(em@result$ID, em@result$pvalue, em@result$p.adjust, em@result$NES))
+    colnames(xy) <- c("Pathway", "P-value", "Adj. P-value", "NES")
+    write.table(xy, "FILENAME.txt", sep = "\t", row.names = F, col.names = T)
+```
+
+The following document was created in Microsoft Excel, combining the GSEA output of all three celltypes comparing DF vs R.
+
+```{r}
+library(xlsx)
+library(ggplot2)
+library(ggpubr)
+
+df <- read.xlsx("NESscores_signatures.xlsx", sheetIndex = 1)
+
+df$LogP = -log(df$adj.P)
+df$up = ifelse(df$NES < 0, "R", "DF")
+df$NES = -1*df$NES
+df$ID = paste0(df$NES,"_", df$Cluster.ID)
+
+p1 <- ggballoonplot(
+  subset(df, Sig.Select == "DC_combined"),
+  x = "NES",
+  y = "ID", facet.by = "Celltype",
+  size = "LogP", fill = "NES", size.range = c(1,6)) +
+  scale_fill_fermenter(n.breaks = 9, palette = "RdYlBu") +  # Set min and max for the fill color
+  coord_fixed(ratio = 1)  # Adjust the ratio as needed
+
+p2 <- ggballoonplot(
+  subset(df, Sig.Select == "Nat Comm 2024_TAM atlas"),
+  x = "NES",
+  y = "ID", facet.by = "Celltype",
+  size = "LogP", fill = "NES", size.range = c(1,6)) +
+  scale_fill_fermenter(n.breaks = 9, palette = "RdYlBu") +  # Set min and max for the fill color
+  coord_fixed(ratio = 1)  # Adjust the ratio as needed
+
+p3 <- ggballoonplot(
+  subset(df, Sig.Select == "Pan-cancer-TIL-atlas-Science_CD8-signatures"),
+  x = "NES",
+  y = "ID", facet.by = "Celltype",
+  size = "LogP", fill = "NES", size.range = c(1,6), ) +
+  scale_fill_fermenter(n.breaks = 9, palette = "RdYlBu") +  # Set min and max for the fill color
+  coord_fixed(ratio = 1)  # Adjust the ratio as needed
+
+print(p1)
+print(p2)
+print(p3)
+```
+
+# FigS4B
+
+```{r}
+library(xlsx)
+library(pheatmap)
+library(dplyr)
+library(stringr)
+
+averageCounts = read.delim("counts_Q3norm_uniqueSamples.txt", row.names = 1)
+
+sub.count <- averageCounts[, grepl("CD11c", names(averageCounts))]
+
+# Function to calculate z-score for a row
+row_zscore <- function(x) {
+  (x - mean(x, na.rm = TRUE)) / sd(x, na.rm = TRUE)
+}
+
+# Apply the function to each row of the data frame
+df_zscores <- t(apply(sub.count, 1, row_zscore))
+df_zscores <- as.data.frame(df_zscores)
+
+df <- data.frame(row.names = rownames(df_zscores),
+                 DF = rowMeans(df_zscores[, grep("_DF", names(df_zscores))], na.rm = TRUE),
+                 R = rowMeans(df_zscores[, grep("_R", names(df_zscores))], na.rm = TRUE))
+
+sampleInfo = data.frame(SampleID = colnames(df))
+
+sampleInfo <- sampleInfo %>%
+  mutate(Celltype = case_when(
+    grepl("CD68", SampleID) ~ "CD68",
+    grepl("CD11c", SampleID) ~ "CD11c",
+    grepl("CD8", SampleID) ~ "CD8",
+    TRUE ~ NA_character_  # or you can leave it empty if you don't want NA values
+  ))
+
+sampleInfo <- sampleInfo %>%
+  mutate(Group = case_when(
+    grepl("_DF", SampleID) ~ "DF",
+    grepl("_R", SampleID) ~ "R",
+    TRUE ~ NA_character_  # or you can leave it empty if you don't want NA values
+  ))
+
+sampleInfo <- sampleInfo %>%
+  mutate(PatientID = str_extract(SampleID, "P\\d{3}"))
+
+saminf <- sampleInfo[, -1]
+rownames(saminf) <- sampleInfo$SampleID
+
+rownames(saminf) == colnames(df)
+
+library(reshape2)
+genes <- read.xlsx("FigS4_heatmap_gene_selection", sheetIndex = 1)
+genes.melt <- melt(as.matrix(genes))
+genes.melt <- na.omit(genes.melt)
+colnames(genes.melt) <- c("x", "list", "gene")
+
+library(pheatmap)
+#Column annotation
+my_sample_col <- data.frame(Group = saminf$Group,
+                            Celltype = saminf$Celltype)
+
+for (i in unique(genes.melt$list)[11:21]){
+x <- subset(genes.melt, list == i)$gene
+hm <- df[rownames(df) %in% x,]
+p <- pheatmap(mat = hm, 
+         cluster_rows = T, 
+         cluster_cols = F, 
+         #scale = "row", 
+         fontsize = 7, 
+         #annotation_col = my_sample_col,
+         color = hcl.colors(100, "Mint", rev = T),
+         #color = hcl.colors(100, "RdBu", rev = T),
+         cutree_cols = NA, 
+         cutree_rows = NA, angle_col = 45, fontsize_col = 9, main = paste0("DC - ", i), 
+         cellwidth = 20,    # Set desired cell width
+         cellheight = 20)
+}
+```
+# FigS4C
+
+Pathway analysis with [Metascape](https://metascape.org/gp/index.html)
+
+# FigS4E
+
+```{r}
+library(xlsx)
+library(pheatmap)
+library(dplyr)
+library(stringr)
+
+averageCounts = read.delim("counts_Q3norm_uniqueSamples.txt", row.names = 1)
+
+sub.count <- averageCounts[, grepl("CD68", names(averageCounts))]
+
+# Function to calculate z-score for a row
+row_zscore <- function(x) {
+  (x - mean(x, na.rm = TRUE)) / sd(x, na.rm = TRUE)
+}
+
+# Apply the function to each row of the data frame
+df_zscores <- t(apply(sub.count, 1, row_zscore))
+df_zscores <- as.data.frame(df_zscores)
+
+df <- data.frame(row.names = rownames(df_zscores),
+                 DF = rowMeans(df_zscores[, grep("_DF", names(df_zscores))], na.rm = TRUE),
+                 R = rowMeans(df_zscores[, grep("_R", names(df_zscores))], na.rm = TRUE))
+
+sampleInfo = data.frame(SampleID = colnames(df))
+
+sampleInfo <- sampleInfo %>%
+  mutate(Celltype = case_when(
+    grepl("CD68", SampleID) ~ "CD68",
+    grepl("CD11c", SampleID) ~ "CD11c",
+    grepl("CD8", SampleID) ~ "CD8",
+    TRUE ~ NA_character_  # or you can leave it empty if you don't want NA values
+  ))
+
+sampleInfo <- sampleInfo %>%
+  mutate(Group = case_when(
+    grepl("_DF", SampleID) ~ "DF",
+    grepl("_R", SampleID) ~ "R",
+    TRUE ~ NA_character_  # or you can leave it empty if you don't want NA values
+  ))
+
+sampleInfo <- sampleInfo %>%
+  mutate(PatientID = str_extract(SampleID, "P\\d{3}"))
+
+saminf <- sampleInfo[, -1]
+rownames(saminf) <- sampleInfo$SampleID
+
+rownames(saminf) == colnames(df)
+
+library(reshape2)
+genes <- read.xlsx("FigS4_heatmap_gene_selection", sheetIndex = 1)
+genes.melt <- melt(as.matrix(genes))
+genes.melt <- na.omit(genes.melt)
+colnames(genes.melt) <- c("x", "list", "gene")
+
+library(pheatmap)
+
+#Column annotation
+my_sample_col <- data.frame(Group = saminf$Group,
+                            Celltype = saminf$Celltype)
+
+for (i in unique(genes.melt$list)[1:10]){
+x <- subset(genes.melt, list == i)$gene
+hm <- df[rownames(df) %in% x,]
+p <- pheatmap(mat = hm, 
+         cluster_rows = T, 
+         cluster_cols = F, 
+         #scale = "row", 
+         fontsize = 7, 
+         #annotation_col = my_sample_col,
+         color = hcl.colors(100, "Mint", rev = T),
+         #color = hcl.colors(100, "RdBu", rev = T),
+         cutree_cols = NA, 
+         cutree_rows = NA, angle_col = 45, fontsize_col = 9, main = paste0("Mac - ", i), 
+         cellwidth = 20,    # Set desired cell width
+         cellheight = 20)
+}
+```
+
+# FigS4C
+
+Pathway analysis with [Metascape](https://metascape.org/gp/index.html)

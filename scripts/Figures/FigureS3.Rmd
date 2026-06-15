@@ -1,0 +1,309 @@
+---
+title: "Supplementary Figure 3"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# FigS3A
+
+```{r}
+library(ggplot2)
+library(ggpubr)
+library(scales)
+library(imcRtools)
+
+spe_S3_PC <- subset(spe, (Group == "S3_DF" | Group == "S3_R") & Location == Paracortex)
+  
+# By celltypes
+spe_S3_PC <- aggregateNeighbors(spe_S3_PC, 
+                          colPairName = "delaunay_interaction_graph", 
+                          aggregate_by = "metadata", 
+                          count_by = "celltype_level2")
+
+set.seed(220705)
+
+cn_1 <- kmeans(spe_S3_PC$aggregatedNeighbors, centers = 10, nstart = 100, iter.max = 1000)
+spe_S3_PC$k10 <- as.factor(cn_1$cluster)
+
+plotSpatial(spe_S3_PC[1], 
+            node_color_by = "k10", 
+            img_id = "sample_id", 
+            node_size_fix = 1)
+
+# Heatmap per group
+spe_s3_PC_DF <- spe_S3_PC[,(spe_S3_PC$Group == "S3_DF")]
+spe_s3_PC_DF <- spe_s3_PC_DF[,(spe_s3_PC_DF$cellcell_anno2 != "Tumor" & spe_s3_PC_DF$cellcell_anno2 != "Undefined")]
+
+spe_s3_PC_R <- spe_S3_PC[,(spe_S3_PC$Group == "S3_R")]
+spe_s3_PC_R <- spe_s3_PC_R[,(spe_s3_PC_R$cellcell_anno2 != "Tumor" & spe_s3_PC_R$cellcell_anno2 != "Undefined")]
+
+library(pheatmap)
+for_plot1 <- prop.table(table(spe_s3_PC_DF$k10, spe_s3_PC_DF$cellcell_anno2), 
+                       margin = 2)
+# Step 2: Convert to a data frame for easier manipulation
+for_plot1_df <- as.data.frame(for_plot1)
+
+# Step 3: Scale each column to a 0-1 range
+for_plot1_df_scaled <- for_plot1_df %>%
+  group_by(Var2) %>%  # assuming Var2 represents columns (i.e., cellcell_anno2 levels)
+  mutate(Freq_scaled = (Freq - min(Freq)) / (max(Freq) - min(Freq))) %>%
+  ungroup()
+
+# Step 4: Optional: convert back to a table if necessary
+for_plot1_scaled <- xtabs(Freq_scaled ~ Var1 + Var2, data = for_plot1_df_scaled)
+
+for_plot2 <- prop.table(table(spe_s3_PC_R$k10, spe_s3_PC_R$cellcell_anno2), 
+                       margin = 2)
+
+# Step 2: Convert to a data frame for easier manipulation
+for_plot2_df <- as.data.frame(for_plot2)
+
+# Step 3: Scale each column to a 0-1 range
+for_plot2_df_scaled <- for_plot2_df %>%
+  group_by(Var2) %>%  # assuming Var2 represents columns (i.e., cellcell_anno2 levels)
+  mutate(Freq_scaled = (Freq - min(Freq)) / (max(Freq) - min(Freq))) %>%
+  ungroup()
+
+# Step 4: Optional: convert back to a table if necessary
+for_plot2_scaled <- xtabs(Freq_scaled ~ Var1 + Var2, data = for_plot2_df_scaled)
+
+pheatmap(for_plot1_scaled, cluster_rows = F, cluster_cols = F, 
+         color = colorRampPalette(c("#005f73", "white", "#ae2012"))(100), 
+         #color = colorRampPalette(c("#e3f2fd", "#42a5f5", "#0d47a1"))(100), 
+         #scale = "column",
+         number_format = "%.2f",  
+         #display_numbers = TRUE,
+         main = "PC_S3_DF")
+pheatmap(for_plot2_scaled, cluster_rows = F, cluster_cols = F, 
+         color = colorRampPalette(c("#005f73", "white", "#ae2012"))(100), 
+         #scale = "column", 
+         main = "PC_S3_R")
+
+```
+
+# FigS3B
+
+```{r}
+meta = data.frame(Row.names = rownames(colData(spe_S3_PC)),
+                  ROI.ID = spe_S3_PC$ROI.ID,
+                  Group = spe_S3_PC$Group,
+                  Location = spe_S3_PC$Location,
+                  k10 = spe_S3_PC$k10,
+                  area = spe_S3_PC$AreaShape_Area)
+
+df <- meta %>% group_by(ROI.ID, k10, Group, Location) %>%
+  reframe(Area = sum(area))
+
+symnum.args <- list(cutpoints = c(0, 0.0001, 0.001, 0.01, 0.05, Inf), symbols = c("****", "***", "**", "*", "ns"))
+
+for (i in 1:10) {
+
+  p1 <- ggplot(
+    subset(df, k10 == i),
+    aes(x = Group, y = Area * 4, fill = Group)
+  ) +
+    geom_boxplot(outlier.shape = NA) +
+    geom_jitter(
+      width = 0.2,
+      size = 2,
+      alpha = 0.7
+    ) +
+    stat_compare_means(
+      aes(group = Group),
+      comparisons = list(c("S3_DF", "S3_R")),
+      method = "t.test",
+      symnum.args = symnum.args
+    ) +
+    labs(
+      title = paste0("NB size per ROI - NB", i),
+      x = "Variable",
+      y = "um nb per mm2"
+    ) +
+    theme_classic()
+
+  print(p1)
+}
+```
+
+# FigS3C
+
+```{r}
+
+library(dplyr)
+library(tidyr)
+
+df <- as.data.frame(colData(spe_S3_PC)) %>% 
+  group_by(k10, cellcell_anno2, Group, Location) %>%
+  reframe(n_k10 = n()) %>%
+  complete(k10, cellcell_anno2, Group, Location, fill = list(n_k10 = 0)) %>%  # Fill missing rows with n_k10 = 0
+  group_by(cellcell_anno2, Group, Location) %>%
+  mutate(percentage = (n_k10 / sum(n_k10)) * 100) 
+
+# Calculate the log2 fold change between groups
+log2_fold_change_df <- df %>%
+  group_by(k10, cellcell_anno2, Location) %>%
+  reframe(
+    log2FC = log2((percentage[Group == "S3_DF"]+1) / (percentage[Group == "S3_R"]+1)),
+    .groups = "drop"
+  )
+
+# Load ggplot2 for visualization
+library(ggplot2)
+
+# Generate the heatmap
+ggplot(log2_fold_change_df, aes(x = cellcell_anno2, y = k10, fill = log2FC)) +
+  geom_tile(color = "white") +                       # Creates the heatmap with white tile borders
+  scale_fill_gradient2(low = "#ae2012", mid = "white", high = "#005f73", midpoint = 0, 
+                       name = "Log2 Fold Change") +   # Set color scale for log2 fold change
+  theme_minimal() +                                  # Use a minimal theme
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +  # Rotate x-axis labels for clarity
+  labs(x = "Cell Annotation (cellcell_anno2)",       # Customize axis labels
+       y = "k10",
+       title = "Heatmap of Log2 Fold Change by k10 and Cell Annotation")
+
+```
+
+# FigS3D
+
+```{r}
+library(ggplot2)
+
+df <- as.data.frame(colData(spe_S3_PC)) %>% 
+  group_by(k10, cellcell_anno2, Group, Location, ROI.ID) %>%
+  reframe(n_k10 = n()) %>%
+  group_by(cellcell_anno2, Group, Location, ROI.ID) %>%
+  mutate(percentage = (n_k10 / sum(n_k10)) * 100)
+
+NB = "2"
+cells <- c("CD8_nonNaive", "CD8_Naive", "CD4_nonNaive", "CD4_Naive", "Tregs_nonNaive", "HLADRhi_DC", "HLADRlo_DC", "M_CD163", "M_CD169")
+
+for (cell in cells){
+p1 <- ggplot(subset(df, k10 == NB & cellcell_anno2 == cell), 
+       aes_string(x="Group", y="percentage", fill = "Group")) + 
+       #geom_violin() +
+       geom_boxplot(outlier.size = 0.5, outlier.alpha = 0.5) +
+       stat_compare_means(comparisons = list(c("S3_DF", "S3_R")), method = "wilcox.test", symnum.args = symnum.args) +
+       labs(title=paste0("NB", NB, " - ", cell),x="Group", y = "percentage of cells (per ROI)") + 
+        scale_fill_manual(values = c("S3_DF" = "#00a1b1", "S3_R" = "#d85735")) + # Custom colors
+       #scale_y_continuous(trans = 'log2') +
+       theme_classic()
+print(p1)
+}
+dev.off()
+
+pdf("v:/Asthma-Lympho/Anneloes/04_Manuscripts/02_Hyperion_Melanoma/00_Manuscript/Publishing/Revisions_1/01_R_Figures/FigS4_CD8_nonNaive_NB2_PC.pdf", width = 3, height = 5)
+ggplot(subset(df, k10 == "2" & cellcell_anno2 == "CD8_nonNaive"), 
+       aes_string(x="Group", y="percentage", fill = "Group")) + 
+       #geom_violin() +
+       geom_boxplot(outlier.size = 0.5, outlier.alpha = 0.5) +
+       stat_compare_means(comparisons = list(c("S3_DF", "S3_R")), method = "wilcox.test") +
+       labs(title=paste0("NB", NB, " - ", "CD8_nonNaive"),x="Group", y = "percentage of cells (per ROI)") +
+        scale_fill_manual(values = c("S3_DF" = "#00a1b1", "S3_R" = "#d85735")) + # Custom colors
+       #scale_y_continuous(trans = 'log2') +
+       theme_classic()
+
+```
+
+# FigS3E
+
+```{r, fig.width= 3, fig.height=5}
+
+counts = as.data.frame(t(spe_S3_PC@assays@data$exprs))
+meta = data.frame(Row.names = rownames(colData(spe_S3_PC)),
+                  Group = spe_S3_PC$Group,
+                  Location = spe_S3_PC$Location,
+                  #celltype_res = spe_S3_PC$celltype_res2,
+                  #celltype = spe_S3_PC$celltype,
+                  cellcell_anno2 = spe_S3_PC$cellcell_anno2,
+                  k10 = spe_S3_PC$k10,
+                  ROI.ID = spe_S3_PC$ROI.ID)
+
+df <- merge(meta, counts, by.x = "Row.names", by.y = "row.names")
+rownames(df) <- df$Row.names
+df <- dplyr::select(df, -c("Row.names"))
+
+df2 <- df %>% group_by(ROI.ID, Location, Group, cellcell_anno2, k10) %>%
+  summarize_all(mean)
+
+markers = c("PD-1", "TOX", "TIM-3", "TCF1", "Ki-67", "IDO", "PD-L1", "CTLA-4")
+cells <- c("CD8_nonNaive", "CD8_Naive", "Tregs_nonNaive", "HLADRhi_DC", "HLADRlo_DC", "M_CD163", "M_CD169")
+symnum.args <- list(cutpoints = c(0, 0.0001, 0.001, 0.01, 0.05, Inf), symbols = c("****", "***", "**", "*", "ns"))
+
+##########################################################
+
+for (cell in cells){
+  for (marker in markers){
+p2 <- ggplot(subset(df2, (Group == "S3_DF" | Group == "S3_R") & Location == "Paracortex" & cellcell_anno2 == cell & k10 == "2"),
+       aes_string(x="Group", y=paste0("`", marker,"`"), fill = "Group")) + 
+       geom_violin() + geom_boxplot(width=0.1, fill="white") +
+       #geom_boxplot(outlier.size = 0.5, outlier.alpha = 0.5) +
+       stat_compare_means(comparisons = list(c("S3_DF", "S3_R")), method = "t.test", symnum.args = symnum.args) +
+       labs(title=paste0(cell, " - ", marker), x="Group", y = "mean normalized expression per ROI") + 
+       scale_fill_manual(values = c("S3_DF" = "#00a1b1", "S3_R" = "#d85735")) + # Custom colors
+       #scale_y_continuous(trans='log2') +
+       theme_classic()
+print(p2)
+  }
+}
+
+```
+
+# FigS3F-G
+
+Here, we first calculate the interaction of each cell, summarised per ROI, and exported to be plotted using Graphpad Prism.
+
+```{r}
+library(BiocParallel)
+library(imcRtools)
+library(dplyr)
+
+out <- testInteractions(spe, 
+                        group_by = "ID",
+                        label = "celltype_level2", 
+                        colPairName = "delaunay_interaction_graph",
+                        p_threshold = 0.05,
+                        method = "classic", 
+                        #patch_size = 3,
+                        BPPARAM = SerialParam(RNGseed = 221029))
+
+cc.df <- data.frame(out@listData)
+cc.df$group = spe$Group[match(out@listData$group_by, spe$ID)]
+cc.df$Location = spe$Location[match(out@listData$group_by, spe$ID)]
+cc.df$Group.location = spe$Group.location[match(out@listData$group_by, spe$ID)]
+cc.df$Patient = spe$Patient.ID[match(out@listData$group_by, spe$ID)]
+cc.df$sig.int <- ifelse(cc.df$sigval == 1, "Interact", no = ifelse(cc.df$sigval == 0, "ns", "Avoid"))
+
+cc.df <- cc.df %>% 
+  group_by(Patient, from_label, to_label, group, Location) %>%
+  summarize(
+    mean_neighbours = mean(ct, na.rm = TRUE),
+    sum_sigval = sum(sigval, na.rm = TRUE),
+    sum_interact = sum(str_detect(sig.int, "Interact"), na.rm = TRUE),
+    sum_ns = sum(str_detect(sig.int, "ns"), na.rm = TRUE),
+    sum_avoid = sum(str_detect(sig.int, "Avoid"), na.rm = TRUE),
+    n = n(),
+    percent.sigval = abs(sum_sigval/n), 
+    interaction = if_else(sum_sigval < 0, "Avoid", "Interact")
+  )
+
+cc.sum <- data.frame(out@listData)
+cc.sum$group = spe$Group[match(out@listData$group_by, spe$ID)]
+cc.sum$Location = spe$Location[match(out@listData$group_by, spe$ID)]
+cc.sum$Group.location = spe$Group.location[match(out@listData$group_by, spe$ID)]
+cc.sum$Patient = spe$Patient.ID[match(out@listData$group_by, spe$ID)]
+
+cc.sum <- cc.sum %>% 
+  group_by(from_label, to_label, group, Location) %>%
+  summarize(
+    mean_neighbours = mean(ct, na.rm = TRUE),
+    sum_sigval = sum(sigval, na.rm = TRUE),
+    n = n(),
+    percent.sigval = abs(sum_sigval/n), 
+    interaction = if_else(sum_sigval < 0, "Avoid", "Interact")
+  )
+
+write.table(cc.sum, "table_stat_cellcell_interact_boxplot.txt", sep = "\t", quote = F, row.names = F)
+```

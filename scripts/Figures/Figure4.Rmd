@@ -1,7 +1,6 @@
 ---
-title: "Single-cell sequencing of B16F0 mouse (TD)LN and tumor"
+title: "Figure 3"
 output: html_document
-date: "2025-10-13"
 ---
 
 ```{r setup, include=FALSE}

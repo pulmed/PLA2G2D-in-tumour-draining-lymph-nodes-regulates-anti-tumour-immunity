@@ -1,7 +1,6 @@
 ---
-title: "DSP data analysis"
+title: "Figure 2"
 output: html_document
-date: "2025-10-13"
 ---
 
 ```{r setup, include=FALSE}

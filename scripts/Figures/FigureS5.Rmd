@@ -1,0 +1,543 @@
+---
+title: "Supplementary Figure 5"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# FigS5A
+
+```{r, fig.width = 5, fig.height = 7}
+results = read.delim("LMM_DFxR.txt")
+
+#BiocManager::install("EnhancedVolcano")
+library(EnhancedVolcano)
+
+df <- subset(results, results$Subset == "CD8a")
+
+##### Define custom colors #####
+# set the base colour as 'black'
+keyvals <- rep('#d3d3d3', nrow(df))
+
+#set the base name/label as 'NS'
+names(keyvals) <- rep('NS', nrow(df))
+
+# modify keyvals for variables with fold change > 1
+keyvals[which(df$Estimate > 0 &
+                df$Pr...t.. < 0.1)] <- '#ba181b' #color code
+names(keyvals)[which(df$Estimate > 0 &
+                       df$Pr...t.. < 0.1)] <- 'DF' #Upregulated genes
+
+# modify keyvals for variables with fold change < -1
+keyvals[which(df$Estimate < 0 &
+                df$Pr...t.. < 0.1)] <- '#1a659e' #color code
+names(keyvals)[which(df$Estimate < 0 &
+                       df$Pr...t.. < 0.1)] <- 'R' #Downregulated genes
+
+##### Produce the plot #####
+ID <- "CD8" 
+
+volcano <- EnhancedVolcano(df,
+                           lab = df$Gene,
+                           title = ID,
+                           x = "Estimate",
+                           y = "Pr...t..",
+                           pCutoff = 0.05,
+                           FCcutoff = 0,
+                           selectLab = c("ICAM1", "BHLHE40", "ACACB", "TIGIT", "NFATC1", "TNF", "PDCD1", "TRIP10", "CXCL13", "CXCR3", "CTLA4"), #Show only these labels
+                           drawConnectors = T, #Draw a connecting line to your label
+                           arrowheads = F,
+                           widthConnectors = 0.1, 
+                           colConnectors = "black",
+                           #boxedLabels = TRUE, #Draw a box around your label
+                           #legendVisible = F, #standard is TRUE
+                           colAlpha = 0.6, #transparency of points
+                           #xlim = c(-4.5, 4.5),  
+                           ylim = c(0,3.5), 
+                           pointSize = 1.5, #Define size of the dots
+                           labSize = 2, #Define size of the labels
+                           gridlines.minor = FALSE, #Add minor grid to background
+                           gridlines.major = FALSE, #Add major grid to background
+                           cutoffLineType = 'dashed', #Add cutoff lines for Log2Fold/Pval
+                           cutoffLineCol = "#d3d3d3",
+                           border = "full",
+                           borderColour = "black",
+                           borderWidth = 0.5,
+                           colCustom = keyvals #Add custom colors for your values as defined above 
+                           ) #+ coord_flip()
+                                                
+print(volcano)
+```
+
+# FigS5B
+
+Pathway analysis with [Metascape](https://metascape.org/gp/index.html)
+
+# FigSC
+
+```{r}
+library(xlsx)
+library(pheatmap)
+library(dplyr)
+library(stringr)
+
+averageCounts = read.delim("counts_Q3norm_uniqueSamples.txt", row.names = 1)
+
+sub.count <- averageCounts[, grepl("CD8a", names(averageCounts))]
+
+# Function to calculate z-score for a row
+row_zscore <- function(x) {
+  (x - mean(x, na.rm = TRUE)) / sd(x, na.rm = TRUE)
+}
+
+# Apply the function to each row of the data frame
+df_zscores <- t(apply(sub.count, 1, row_zscore))
+df_zscores <- as.data.frame(df_zscores)
+
+df <- data.frame(row.names = rownames(df_zscores),
+                 DF = rowMeans(df_zscores[, grep("_DF", names(df_zscores))], na.rm = TRUE),
+                 R = rowMeans(df_zscores[, grep("_R", names(df_zscores))], na.rm = TRUE))
+
+sampleInfo = data.frame(SampleID = colnames(df))
+
+sampleInfo <- sampleInfo %>%
+  mutate(Celltype = case_when(
+    grepl("CD68", SampleID) ~ "CD68",
+    grepl("CD11c", SampleID) ~ "CD11c",
+    grepl("CD8", SampleID) ~ "CD8",
+    TRUE ~ NA_character_  # or you can leave it empty if you don't want NA values
+  ))
+
+sampleInfo <- sampleInfo %>%
+  mutate(Group = case_when(
+    grepl("_DF", SampleID) ~ "DF",
+    grepl("_R", SampleID) ~ "R",
+    TRUE ~ NA_character_  # or you can leave it empty if you don't want NA values
+  ))
+
+sampleInfo <- sampleInfo %>%
+  mutate(PatientID = str_extract(SampleID, "P\\d{3}"))
+
+saminf <- sampleInfo[, -1]
+rownames(saminf) <- sampleInfo$SampleID
+
+rownames(saminf) == colnames(df)
+
+library(reshape2)
+genes <- read.xlsx("FigS4_heatmap_selection.xlsx", sheetIndex = 1)
+genes.melt <- melt(as.matrix(genes))
+genes.melt <- na.omit(genes.melt)
+colnames(genes.melt) <- c("x", "list", "gene")
+
+library(pheatmap)
+#Column annotation
+my_sample_col <- data.frame(Group = saminf$Group,
+                            Celltype = saminf$Celltype)
+
+for (i in unique(genes.melt$list)[22:24]){
+x <- subset(genes.melt, list == i)$gene
+hm <- df[rownames(df) %in% x,]
+p <- pheatmap(mat = hm, 
+         cluster_rows = T, 
+         cluster_cols = F, 
+         #scale = "row", 
+         fontsize = 7, 
+         #annotation_col = my_sample_col,
+         color = hcl.colors(100, "Mint", rev = T),
+         #color = hcl.colors(100, "RdBu", rev = T),
+         cutree_cols = NA, 
+         cutree_rows = NA, angle_col = 45, fontsize_col = 9, main = paste0("DC - ", i), 
+         cellwidth = 20,    # Set desired cell width
+         cellheight = 20)
+}
+```
+
+# FigS5E
+
+```{r}
+library(xlsx)
+library(reshape2)
+
+results = read.delim("LMM_DFxR.txt")
+df <- subset(results, results$Subset == "CD8a")
+
+##  feature 1: LOGF2
+    geneList <- df$Estimate
+
+##  feature 2: named vector
+    names(geneList) <- df$Gene
+
+##  feature 3: decreasing order
+    geneList <- sort(geneList, decreasing = TRUE)
+    head(geneList)
+    class(geneList) #should be numeric
+
+##  Create a LogF2 cut-off e.g. > 1
+    gene <- geneList[abs(geneList) > 0.5] #Change log2fold cutoff here
+    head(gene)
+
+####### Creating a custom pathway #############################################################
+##  Make a tab-delimited file for your custom pathways
+##  [First column: name of pathway][Following columns: genes belonging to pathway]
+## !!! Make sure this is in the right species format !!!
+
+    path <- read.xlsx("CD8_Signatures_Nature_Andreatta_2021.xlsx", sheetIndex = 1)
+    
+    path.melt = melt(t(path))
+    
+    path.melt = data.frame(signature = path$Signature
+                           gene = path$Genes)
+
+####### Running the GSEA #############################################################
+
+    em <- GSEA(geneList = geneList,
+                    exponent = 1, #standard
+                    minGSSize = 10, #Minimum amount of genes in one geneset
+                    maxGSSize = 1000, #Maximum amount of genes in one geneset
+                    pAdjustMethod = "BH", 
+                    TERM2GENE = path.melt, #genesets
+                    pvalueCutoff = 1, #put 1 to see all pathways
+                    verbose = TRUE)
+ 
+##  Save your GSEA output
+    setwd("YOUR_PATH") #where you will write your file
+
+    head(as.data.frame(cbind(em@result$ID, em@result$pvalue, em@result$p.adjust, em@result$NES)))
+    xy <- as.data.frame(cbind(em@result$ID, em@result$pvalue, em@result$p.adjust, em@result$NES))
+    colnames(xy) <- c("Pathway", "P-value", "Adj. P-value", "NES")
+    write.table(xy, "FILENAME.txt", sep = "\t", row.names = F, col.names = T)
+``` 
+
+The following document was created in Microsoft Excel, combining the GSEA output of all three celltypes comparing DF vs R.
+
+```{r}
+library(xlsx)
+library(ggplot2)
+library(ggpubr)
+
+df <- read.xlsx("NESscores_signatures.xlsx", sheetIndex = 1)
+
+df$LogP = -log(df$adj.P)
+df$up = ifelse(df$NES < 0, "R", "DF")
+df$NES = -1*df$NES
+df$ID = paste0(df$NES,"_", df$Cluster.ID)
+
+p1 <- ggballoonplot(
+  subset(df, Sig.Select == "DC_combined"),
+  x = "NES",
+  y = "ID", facet.by = "Celltype",
+  size = "LogP", fill = "NES", size.range = c(1,6)) +
+  scale_fill_fermenter(n.breaks = 9, palette = "RdYlBu") +  # Set min and max for the fill color
+  coord_fixed(ratio = 1)  # Adjust the ratio as needed
+
+p2 <- ggballoonplot(
+  subset(df, Sig.Select == "Nat Comm 2024_TAM atlas"),
+  x = "NES",
+  y = "ID", facet.by = "Celltype",
+  size = "LogP", fill = "NES", size.range = c(1,6)) +
+  scale_fill_fermenter(n.breaks = 9, palette = "RdYlBu") +  # Set min and max for the fill color
+  coord_fixed(ratio = 1)  # Adjust the ratio as needed
+
+p3 <- ggballoonplot(
+  subset(df, Sig.Select == "Pan-cancer-TIL-atlas-Science_CD8-signatures"),
+  x = "NES",
+  y = "ID", facet.by = "Celltype",
+  size = "LogP", fill = "NES", size.range = c(1,6), ) +
+  scale_fill_fermenter(n.breaks = 9, palette = "RdYlBu") +  # Set min and max for the fill color
+  coord_fixed(ratio = 1)  # Adjust the ratio as needed
+
+print(p1)
+print(p2)
+print(p3)
+```
+
+# FigS5F
+
+Signatures are from here: https://doi.org/10.1016/j.ccell.2023.03.009
+
+```{r}
+library(xlsx)
+library(reshape2)
+
+results = read.delim("LMM_DFxR.txt")
+df <- subset(results, results$Subset == "CD8a")
+
+##  feature 1: LOGF2
+    geneList <- df$Estimate
+
+##  feature 2: named vector
+    names(geneList) <- df$Gene
+
+##  feature 3: decreasing order
+    geneList <- sort(geneList, decreasing = TRUE)
+    head(geneList)
+    class(geneList) #should be numeric
+
+##  Create a LogF2 cut-off e.g. > 1
+    gene <- geneList[abs(geneList) > 0.5] #Change log2fold cutoff here
+    head(gene)
+
+####### Creating a custom pathway #############################################################
+##  Make a tab-delimited file for your custom pathways
+##  [First column: name of pathway][Following columns: genes belonging to pathway]
+## !!! Make sure this is in the right species format !!!
+
+    path <- read.xlsx("TRM_TEX_signatures.xlsx", sheetIndex = 1)
+    
+    path.melt = melt(t(path))
+    
+    path.melt = data.frame(signature = path$Signature
+                           gene = path$Genes)
+
+####### Running the GSEA #############################################################
+
+    em <- GSEA(geneList = geneList,
+                    exponent = 1, #standard
+                    minGSSize = 10, #Minimum amount of genes in one geneset
+                    maxGSSize = 1000, #Maximum amount of genes in one geneset
+                    pAdjustMethod = "BH", 
+                    TERM2GENE = path.melt, #genesets
+                    pvalueCutoff = 1, #put 1 to see all pathways
+                    verbose = TRUE)
+ 
+##  Save your GSEA output
+    setwd("YOUR_PATH") #where you will write your file
+
+    head(as.data.frame(cbind(em@result$ID, em@result$pvalue, em@result$p.adjust, em@result$NES)))
+    xy <- as.data.frame(cbind(em@result$ID, em@result$pvalue, em@result$p.adjust, em@result$NES))
+    colnames(xy) <- c("Pathway", "P-value", "Adj. P-value", "NES")
+    write.table(xy, "FILENAME.txt", sep = "\t", row.names = F, col.names = T)
+``` 
+
+```{r}
+library(xlsx)
+library(ggplot2)
+library(ggpubr)
+
+xy$LogP = -log(xy$adj.P)
+xy$up = ifelse(xy$NES < 0, "R", "DF")
+xy$NES = -1*xy$NES
+
+p1 <- ggballoonplot(df,
+  x = "NES",
+  y = "Pathway",
+  size = "LogP", fill = "NES", size.range = c(1,6)) +
+  scale_fill_fermenter(n.breaks = 9, palette = "RdYlBu") +  # Set min and max for the fill color
+  coord_fixed(ratio = 1)  # Adjust the ratio as needed
+
+print(p1)
+```
+
+# FigS5G
+
+```{r, fig.width=6, fig.height=5}
+counts = as.data.frame(t(spe@assays@data$exprs))
+meta = data.frame(Row.names = rownames(colData(spe)),
+                  ROI.ID = spe$Patient.ID,
+                  Group = spe$Group,
+                  Location = spe$Location,
+                  celltype = spe$celltype_level2)
+
+df <- merge(meta, counts, by.x = "Row.names", by.y = "row.names")
+rownames(df) <- df$Row.names
+df <- select(df, -c("Row.names"))
+df <- na.omit(df)
+
+library(dplyr)
+library(tidyr)
+library(ggpubr)
+
+# summarize mean expression per patient, celltype, and location
+df_summary <- df %>%
+  group_by(ROI.ID, Group, Location, celltype) %>%
+  summarise(across(where(is.numeric), median, na.rm = TRUE)) %>%
+  ungroup()
+
+##### Non-naive CD8T
+
+df_plot <- subset(df_summary, (Location == "Intratumoral" | Location == "Paracortex") & (Group == "HC" | Group == "S3_DF" | Group == "S3_R") & (celltype == "CD8_Naive" | celltype == "CD8_nonNaive"))
+
+library(ggplot2)
+
+# Custom colors for boxplots
+custom_colors <- c("Intratumoral" = "#1f77b4", "Paracortex" = "#ff7f0e")  # blue and orange example
+
+symnum.args <- list(cutpoints = c(0, 0.0001, 0.001, 0.01, 0.05, Inf), symbols = c("****", "***", "**", "*", "ns"))
+
+# Example gene list
+genes <- c("PD-1", "CTLA-4", "TIM-3", "TOX", "TCF1", "Ki-67", "CD45RA")  # replace with your genes
+custom_colors <- c("Intratumoral" = "#1f77b4", "Paracortex" = "#ff7f0e")
+
+# For all genes, find min and max > 0 (safe for log2) 
+y_min <- min(df_plot[genes][df_plot[genes] > 0], na.rm = TRUE) 
+y_max <- max(df_plot[genes][df_plot[genes] > 0], na.rm = TRUE)
+
+for (gene in genes) {
+  
+  p1 <- ggplot(df_plot, aes(x = Location, y = .data[[gene]], fill = Location)) +
+    geom_boxplot(alpha = 0.6) +
+    geom_line(aes(group = ROI.ID), color = "darkgrey", alpha = 0.5) +
+    geom_point(color = "black", size = 1) +
+    scale_fill_manual(values = custom_colors) +
+    labs(
+      x = "Location",
+      y = "Median expression (Log2)",
+      title = gene
+    ) +
+    coord_cartesian(ylim = c(y_min, y_max)) +  # keep all points and stats visible
+    scale_y_continuous(trans = 'log2') +
+    stat_compare_means(
+      comparisons = list(c("Intratumoral", "Paracortex")),
+      method = "wilcox.test"
+    ) +
+    facet_wrap(~Group + celltype) +
+    theme_minimal()
+  
+  print(p1)
+  
+    p2 <- ggplot(df_plot, aes(x = Location, y = .data[[gene]], fill = Location)) +
+    geom_boxplot(alpha = 0.6) +
+    geom_line(aes(group = ROI.ID), color = "darkgrey", alpha = 0.5) +
+    geom_point(color = "black", size = 1) +
+    scale_fill_manual(values = custom_colors) +
+    labs(
+      x = "Location",
+      y = "Median expression (Log2)",
+      title = gene
+    ) +
+    coord_cartesian(ylim = c(y_min, y_max)) +  # keep all points and stats visible
+    scale_y_continuous(trans = 'log2') +
+    stat_compare_means(
+      comparisons = list(c("Intratumoral", "Paracortex")),
+      method = "wilcox.test"
+    ) +
+    facet_wrap(~celltype) +
+    theme_minimal()
+  
+  print(p2)
+}
+```
+
+# FigS5H-1/3
+
+```{r, fig.width=15, fig.height=20}
+library(ggpubr)
+library(dplyr)
+library(rstatix)
+
+# Generate data frame
+counts = as.data.frame(t(spe.use@assays@data$exprs))
+meta = data.frame(Row.names = rownames(colData(spe.use)),
+                  Group = spe.use$Group,
+                  Location = spe.use$Location,
+                  celltype_res2 = spe.use$celltype_res2,
+                  cellcell_anno2 = spe.use$cellcell_anno2,
+                  celltype = spe.use$celltype)
+
+df <- merge(meta, counts, by.x = "Row.names", by.y = "row.names")
+rownames(df) <- df$Row.names
+df <- dplyr::select(df, -c("Row.names"))
+
+# For statistics
+
+symnum.args <- list(cutpoints = c(0, 0.0001, 0.001, 0.01, 0.05, Inf), symbols = c("****", "***", "**", "*", "ns"))
+
+# Isolate markers
+markers = c("PD-1", "TOX")
+
+# Run the plot
+
+for (i in markers){
+print(i)  
+p2 <- ggplot(subset(df, celltype_level1 == "CD8T" & (Group == "S3_DF" | Group == "S3_R") & Location == "Paracortex"), aes_string(x="Group", y=paste0("`", i, "`"), fill="Group")) + 
+    geom_boxplot() + scale_y_continuous(trans='log2') +
+    stat_compare_means(comparisons = list(c("S3_DF", "S3_R")), method = "wilcox.test", hide.ns =  TRUE)
+print(p2)
+}
+```
+
+# FigS5H-2/4
+
+## Correlation DSP - Hyperion
+
+```{r}
+library(dplyr)
+library(stringr)
+library(reshape2)
+library(ggpubr)
+library(SpatialExperiment)
+
+spe <- readRDS("spe_TDLN_Mela.rds")
+
+spe.use <- spe[,!grepl("P025", colData(spe)$Patient.ID)] 
+
+counts = as.data.frame(t(spe.use@assays@data$exprs))
+meta = data.frame(Row.names = rownames(colData(spe.use)),
+                  Group = spe.use$Group,
+                  Patient.ID = spe.use$Patient,
+                  Location = spe.use$Location,
+                  celltype = spe.use$celltype)
+
+df <- merge(meta, counts, by.x = "Row.names", by.y = "row.names")
+rownames(df) <- df$Row.names
+df <- select(df, -c("Row.names"))
+
+result1 <- df %>%
+  group_by(Patient.ID, Location, celltype, Group) %>%
+  summarise(Count = n()) 
+result1$ID = paste0(result1$Patient.ID, "_", result1$Location, "_", result1$celltype, "_", result1$Group)
+
+result2 <- df %>%
+  group_by(Patient.ID, Location, celltype, Group) %>%
+  summarise_all(mean)
+result2$ID = paste0(result2$Patient.ID, "_", result2$Location, "_", result2$celltype, "_", result2$Group)
+
+hyperion = left_join(result1[,c("ID", "Count")], result2, by = "ID")
+
+
+averageCounts = read.delim("counts_Q3norm_uniqueSamples.txt", row.names = 1)
+
+sampleInfo = data.frame(SampleID = colnames(averageCounts))
+
+sampleInfo <- sampleInfo %>%
+  mutate(Celltype = case_when(
+    grepl("CD68", SampleID) ~ "CD68",
+    grepl("CD11c", SampleID) ~ "CD11c",
+    grepl("CD8", SampleID) ~ "CD8",
+    TRUE ~ NA_character_  # or you can leave it empty if you don't want NA values
+  ))
+
+sampleInfo <- sampleInfo %>%
+  mutate(Group = case_when(
+    grepl("_DF", SampleID) ~ "DF",
+    grepl("_R", SampleID) ~ "R",
+    TRUE ~ NA_character_  # or you can leave it empty if you don't want NA values
+  ))
+
+sampleInfo <- sampleInfo %>%
+  mutate(PatientID = str_extract(SampleID, "P\\d{3}"))
+
+dsp <- merge(sampleInfo, t(averageCounts), by.x = "SampleID", by.y = "row.names")
+```
+
+```{r, fig.width=4.5, fig.height=5}
+library(rstatix)
+
+hyper.PC = subset(hyperion, subset = Location == "Paracortex" & celltype == "CD8")
+dsp.MO = subset(dsp, Celltype == "CD8a")
+
+input <- merge(hyper.PC[,c("Patient.ID", "PD-1")], dsp.MO[,c("PatientID", "ADAMDEC1")], by.x = "Patient.ID", by.y = "PatientID", keep = FALSE)
+
+input <- merge(sampleInfo[,c("PatientID", "Group")], input, by.x = "PatientID", by.y = "Patient.ID")
+
+  ggplot(input, 
+  aes(x=`PD-1`, y=CXCL13)) +
+  geom_point(aes(colour= Group)) +
+  geom_smooth(formula = y ~ x, method=lm , color="red", fill="#69b3a2", se=TRUE) +
+  #theme_ipsum() +
+  #theme_graph(base_family="sans") +
+  labs(x = paste0("Paracortex PD-1 protein expression on CD8"), y = "Paracortex CXCL13 gene expression on CD8",     title = "Stage III") +
+  stat_cor(color = "black", geom = "label", method = "pearson", p.accuracy = 0.001) 
+```

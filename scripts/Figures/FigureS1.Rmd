@@ -1,7 +1,6 @@
 ---
-title: "Hyperion IMC data analysis"
+title: "Supplementary Figure 1"
 output: html_document
-date: "2025-10-13"
 ---
 
 ```{r setup, include=FALSE}
