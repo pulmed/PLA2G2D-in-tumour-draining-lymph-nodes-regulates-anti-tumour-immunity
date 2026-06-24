@@ -1,0 +1,323 @@
+---
+title: "Supplementary Figure 5"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# FigS8A
+
+```{r}
+install.packages('Matrix', repos = c('https://r-forge.r-universe.dev', 'https://cloud.r-project.org'))
+library(Matrix)
+library(Seurat)
+
+lac <- readRDS("GSE131907_Lung_Cancer_raw_UMI_matrix.rds")
+lac <- as.matrix(lac)
+#lac <- Matrix(lac, sparse = TRUE)
+
+meta <- read.delim("GSE131907_Lung_Cancer_cell_annotation.txt", row.names = 1)
+
+lac.data <- CreateSeuratObject(counts = lac, project = "LAC", meta.data = meta, data = lac)
+
+dim(lac)
+table(lac.data$Cell_subtype)
+
+lac.data <- NormalizeData(lac.data)
+
+saveRDS(lac.data, "LAC_object.rds")
+lac.data <- readRDS("LAC_object.rds")
+```
+
+CAlculate the UMAP
+
+```{r}
+
+library(harmony)
+# Standard workflow
+lac.data <- NormalizeData(lac.data)
+lac.data <- as.matrix(lac.data)
+lac.data <- Matrix(lac.data, sparse = TRUE)
+  
+  
+lac.data <- FindVariableFeatures(
+  lac.data,
+  assay = "RNA",
+  selection.method = "vst",
+  nfeatures = 3000
+)
+
+lac.data <- ScaleData(lac.data)
+lac.data <- RunPCA(lac.data)
+
+# UMAP and clustering using Harmony embeddings
+lac.data <- RunUMAP(lac.data, dims = 1:30)
+lac.data <- FindNeighbors(lac.data, dims = 1:30)
+lac.data <- FindClusters(lac.data, resolution = 0.3)  # 0.4 originally
+```
+
+Simplify annotation
+
+```{r}
+library(dplyr)
+lac.data$celltype <- recode(lac.data$Cell_subtype,
+                             "Activated DCs" = "DC",
+                             "Alveolar Mac" = "Macrophage",
+                             "AT1" = "Epithelial",
+                             "AT2" = "Epithelial",
+                             "CD141+ DCs" = "DC",
+                             "CD163+CD14+ DCs" = "DC",
+                             "CD1c+ DCs" = "DC",
+                             "CD207+CD1a+ LCs" = "DC",
+                             "CD4+ Th" = "CD4T",
+                             "CD8 low T" = "CD8T",
+                             "CD8+/CD4+ Mixed Th" = "Undetermined",
+                             "Ciliated" = "Epithelial",
+                             "Club" = "Epithelial",
+                             "COL13A1+ matrix FBs" = "Fibroblast",
+                             "COL14A1+ matrix FBs" = "Fibroblast",
+                             "Cytotoxic CD8+ T" = "CD8T",
+                             "EPCs" = "Endothelial",
+                             "Exhausted CD8+ T" = "CD8T",
+                             "Exhausted Tfh" = "CD4T",
+                             "FB-like cells" = "Fibroblast",
+                             "Follicular B cells" = "B cell",
+                             "GC B cells in the DZ" = "B cell",
+                             "GC B cells in the LZ" = "B cell",
+                             "GrB-secreting B cells" = "B cell",
+                             "Lymphatic ECs" = "Endothelial",
+                             "Malignant cells" = "Tumor",
+                             "MALT B cells" = "B cell",
+                             "MAST" = "Granulocyte",
+                             "Mesothelial cells" = "Epithelial",
+                             "Microglia/Mac" = "Macrophage",
+                             "mo-Mac" = "Macrophage",
+                             "Monocytes" = "Monocyte",
+                             "Myofibroblasts" = "Fibroblast",
+                             "Naive CD4+ T" = "CD4T",
+                             "Naive CD8+ T" = "CD8T",
+                             "NK" = "NK",
+                             "pDCs" = "DC",
+                             "Pericytes" = "Pericyte",
+                             "Plasma cells" = "B cell",
+                             "Pleural Mac" = "Macrophage",
+                             "Smooth muscle cells" = "Endothelial",
+                             "Stalk-like ECs" = "Endothelial",
+                             "Tip-like ECs" = "Endothelial",
+                             "Treg" = "CD4T",
+                             "tS1" = "Tumor",
+                             "tS2" = "Tumor",
+                             "tS3" = "Tumor",
+                             "Tumor ECs" = "Tumor",
+                             "Undetermined" = "Undetermined")
+
+```
+
+```{r, fig.width=5, fig.height=5}
+library(tidyverse)
+library(Seurat)
+library(patchwork)
+library(viridis)
+
+Idents(lac.data) <- "celltype" 
+    DimPlot(subset(lac.data, (Sample_Origin == "mLN" | Sample_Origin == "nLN") & celltype != "NA"), group.by = "celltype") 
+
+    FeaturePlot(object = subset(lac.data, (Sample_Origin == "mLN" | Sample_Origin == "nLN")), features = "PLA2G2D", label = T, order = T, pt.size = 0.2)#, max.cutoff = 'q90')
+
+   FeaturePlot(object = subset(lac.data, (Sample_Origin == "mLN" | Sample_Origin == "nLN")), features = "CD68", label = T, order = T, pt.size = 0.2)
+
+```
+
+# FigS8B
+
+Create a R object of the downloaded data
+
+```{r}
+#BiocManager::install("SeuratData")
+#BiocManager::install("Seurat")
+library(Seurat)
+library(SeuratData)
+library(dplyr)
+
+counts = Matrix::readMM("projectsGSE167036_cell_counts_matrix.mtx.gz")
+meta = read.csv("GSE167036_meta_all.csv.gz")
+feature =  read.csv("GSE167036_features.csv.gz")
+
+data <- CreateSeuratObject(counts, project = "SeuratProject", assay = "RNA",
+  min.cells = 0, min.features = 0, names.field = 1,
+  names.delim = "_", meta.data = meta)
+
+feature$geneID = paste0("Feature", feature$X)
+rownames(data) <- feature$x[match(rownames(data), feature$geneID)]
+rownames(data)
+
+dim(data)
+table(data$cell_label)
+
+saveRDS(data, "Robject.rds")
+data <- readRDS("Robject.rds")
+```
+
+Simplify annotation
+
+```{r}
+library(dplyr)
+data$celltype <- recode(data$cell_label, 
+                        "B" = "Bcell",
+                        "CAF-C1-POSTN" = "CAF",
+                        "CAF-C2-APOD" = "CAF",
+                        "CAF-C3-PLA2G2A" = "CAF",
+                        "CAF-C4-ACTA2" = "CAF",
+                        "CAF-C5-MYH11" = "CAF",
+                        "CD-GD" = "GD",
+                        "CD4-C1-RPL" = "CD4",
+                        "CD4-C2-ANXA1" = "CD4",
+                        "CD4-C3-YPEL5" = "CD4",
+                        "CD4-C4-FOS" = "CD4",
+                        "CD4-C5-FOXP3" = "CD4",
+                        "CD4-C6-CXCL13" = "CD4",
+                        "CD4-C7-GZMK" = "CD4",
+                        "CD8-C1-CD8B" = "CD8",
+                        "CD8-C2-CCL5" = "CD8",
+                        "CD8-C3-GZMK" = "CD8",
+                        "CD8-C4-HSPA1A" = "CD8",
+                        "CD8-C5-CXCL13" = "CD8",
+                        "DC-C1-CD1C" = "DC",
+                        "DC-C2-CLEC9A" = "DC",
+                        "DC-C3-LAMP3" = "DC",
+                        "Epithelial Cells" = "Epithelial",
+                        "KI67+ cells" = "Prolif",
+                        "Macro-C1-APOC1" = "Macrophage",
+                        "Macro-C2-SLC40A1" = "Macrophage",
+                        "Macro-C3-VCAN" = "Macrophage",
+                        "Macro-C4-CXCL11" = "Macrophage",
+                        "Macro-C5-SPP1" = "Macrophage",
+                        "Macro-C6-CCL3" = "Macrophage",
+                        "Mast cells" = "Mast",
+                        "NK-C1-XCL1" = "NK",
+                        "NK-C2-GZMH" = "NK",
+                        "pDC-LILRA4" = "pDC",
+                        "plasma B" = "Bcell",
+                        "TEC-C1-ACKR1" = "TEC",
+                        "TEC-C2-CD36" = "TEC",
+                        "TEC-C3-PROX1" = "TEC",
+                        "TEC-C4-SEMA3G" = "TEC",
+                        "TEC-C5-INSR" = "TEC"
+                        )
+```
+
+Calculate UMAP
+
+```{r}
+library(SingleCellExperiment)
+#BiocManager::install("umap")
+library(umap)
+
+ggplot(data@meta.data, aes(x = data$umap_1, y = data$umap_2, color = data$celltype)) +
+  geom_point(size = 0.1) +
+  theme_classic()
+
+library(harmony)
+# Standard workflow
+#data <- NormalizeData(data)
+data <- FindVariableFeatures(data, selection.method = "vst", nfeatures = 3000)
+
+data <- ScaleData(data)
+
+data <- RunPCA(data)
+
+# Adjust the grouping variable if needed (e.g. "orig.ident" or "sample")
+data <- RunHarmony(data, group.by.vars = "patient_id")
+
+# UMAP and clustering using Harmony embeddings
+data <- RunUMAP(data, reduction = "harmony", dims = 1:30)
+data <- FindNeighbors(data, reduction = "harmony", dims = 1:30)
+data <- FindClusters(data, resolution = 0.3)  # 0.4 originally
+```
+
+Plot figures
+
+```{r, fig.width=6, fig.height=5}
+library(tidyverse)
+library(Seurat)
+library(patchwork)
+library(viridis)
+
+Idents(data) <- "main_label" 
+DimPlot(data, group.by = "main_label") 
+
+FeaturePlot(object = subset(data, sample_type == "Lymph Node" ), features = 'PLA2G2D', label = T, order = T, pt.size = 0.2, max.cutoff = "q90")
+FeaturePlot(object = subset(data, sample_type == "Lymph Node"), features = 'CD68', label = T, order = T, pt.size = 0.2, max.cutoff = "q95")
+```
+
+# FigS8C 
+
+```{r}
+library(Seurat)
+FeaturePlot(object = merged, features = c('Pla2g2d', "Timd4"), alpha = 0.5, order = T)
+```
+
+# FigS8G
+
+
+
+# FigS8H
+
+```{r}
+meta <- merged@meta.data
+head(meta)
+
+library(dplyr)
+
+counts <- meta %>%
+  group_by(treatment, celltype) %>%
+  summarise(n = n()) %>%
+  ungroup()
+
+ratios <- meta %>%
+  group_by(orig.ident, treatment, celltype, tissue) %>%
+  summarise(n = n()) %>%
+  tidyr::pivot_wider(names_from = celltype, values_from = n, values_fill = 0) %>%
+  mutate(ratio = LAM / (LAM + TAM + DC + moDC + pDC))
+
+```
+
+```{r, fig.width=3, fig.height=6}
+library(ggplot2)
+library(ggpubr)
+
+comparisons <- list(
+  c("Tumor", "TDLN"),
+  c("LN", "TDLN"),
+  c("LN", "Tumor")
+)
+
+  ggplot(ratios, aes(x = tissue, y = ratio, fill = tissue)) +
+  geom_boxplot(alpha = 0.6, outlier.shape = NA) +
+  geom_jitter(width = 0.15, size = 2, alpha = 0.8) +
+  theme_classic(base_size = 14) + 
+  labs(
+    title = "LAMs",
+    y = "% LAMs of myeloid cells",
+    x = "Treatment group"
+  ) +
+  #scale_y_continuous(trans='log10') +
+   stat_compare_means(comparisons = comparisons, method = "t.test", label = "p.signif") +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),  # Rotate x-axis labels
+    legend.position = "none"                             # Remove legend
+  ) +
+  facet_wrap(~treatment)
+```
+
+# FigS8I-J
+
+```{r, fig.width=3, fig.height=5}
+
+VlnPlot(object = subset(merged, celltype == "LAM" &  (treatment == "IFNy" | treatment == "untreated")), features = 'Pla2g2d', group.by = "treatment") + NoLegend()
+
+VlnPlot(object = subset(merged, celltype == "LAM"), features = 'Pla2g2d', group.by = "cellline") + NoLegend()
+
+```
