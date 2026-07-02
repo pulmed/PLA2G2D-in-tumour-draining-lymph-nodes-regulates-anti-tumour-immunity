@@ -119,7 +119,7 @@ print(p1)
 # Fig4L
 
 ```{r, fig.width=3, fig.height=4}
-VlnPlot(merged, features = "Pla2g2d", group.by = "tissue", log = T)
+VlnPlot(sce, features = "Pla2g2d", group.by = "tissue", log = T)
 ```
 
 # Fig4M
@@ -262,7 +262,7 @@ table(names(geneList) %in% path$gene)
 
 ```{r, fig.height=7, fig.width=6}
 
-x <- subset(merged, (celltype == "LAM"))
+x <- subset(sce, (celltype == "LAM"))
 
 expr <- FetchData(x, vars = gene)[,1]
 x$pla_status <- ifelse(expr > 0, "Pla2g2d+", "Pla2g2d-")
@@ -352,7 +352,7 @@ gs.ls <- as.list(geneSet)
 
 # check if genes are in list
 
-genes_in_seurat <- rownames(merged)
+genes_in_seurat <- rownames(sce)
 filtered_list <- lapply(gs.ls, function(gene_vec) {
   gene_vec[gene_vec %in% genes_in_seurat]
 })
@@ -361,7 +361,7 @@ lengths(filtered_list)
 min_genes <- 5
 filtered_list <- filtered_list[lengths(filtered_list) >= min_genes]
 
-merged <- AddModuleScore(object = merged, 
+sce <- AddModuleScore(object = sce, 
                          features = filtered_list, 
                          name = paste0("Score_", names(filtered_list)), 
                          ctrl = 5, 
@@ -369,15 +369,15 @@ merged <- AddModuleScore(object = merged,
 
 # Plot
 
-score_features <- grep("Score", colnames(merged@meta.data), value = TRUE)
+score_features <- grep("Score", colnames(sce@meta.data), value = TRUE)
 score_features
 
-VlnPlot(object =  subset(merged, (tissue == "TDLN" | tissue == "LN") & (lineage == "Macrophage" | lineage == "DC")), 
+VlnPlot(object =  subset(sce, (tissue == "TDLN" | tissue == "LN") & (lineage == "Macrophage" | lineage == "DC")), 
         features = score_features , group.by = "celltype") + NoLegend()
 
 
 pdf("Score_TMZ_signature.pdf", width = 5, height = 5)
-FeaturePlot(merged, features = "Score_TMZ_signature1", order = T, min.cutoff = "q10")
+FeaturePlot(sce, features = "Score_TMZ_signature1", order = T, min.cutoff = "q10")
 dev.off()
 
 ```

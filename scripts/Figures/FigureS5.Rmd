@@ -335,10 +335,11 @@ print(p1)
 ```{r, fig.width=6, fig.height=5}
 counts = as.data.frame(t(spe@assays@data$exprs))
 meta = data.frame(Row.names = rownames(colData(spe)),
-                  ROI.ID = spe$Patient.ID,
+                  ROI.ID = spe$ROI.ID,
                   Group = spe$Group,
                   Location = spe$Location,
-                  celltype = spe$celltype_level2)
+                  celltype = spe$celltype_level1,
+                  ki67 = spe$ki67)
 
 df <- merge(meta, counts, by.x = "Row.names", by.y = "row.names")
 rownames(df) <- df$Row.names
@@ -351,13 +352,14 @@ library(ggpubr)
 
 # summarize mean expression per patient, celltype, and location
 df_summary <- df %>%
-  group_by(ROI.ID, Group, Location, celltype) %>%
+  group_by(ROI.ID, Group, Location, celltype, ki67) %>%
+    filter(!grepl("P025", ROI.ID)) %>%   # Remove ROI.IDs containing "P025"
   summarise(across(where(is.numeric), median, na.rm = TRUE)) %>%
   ungroup()
 
 ##### Non-naive CD8T
 
-df_plot <- subset(df_summary, (Location == "Intratumoral" | Location == "Paracortex") & (Group == "HC" | Group == "S3_DF" | Group == "S3_R") & (celltype == "CD8_Naive" | celltype == "CD8_nonNaive"))
+df_plot <- subset(df_summary, (Location == "Intratumoral" | Location == "Paracortex") & (Group == "S3_DF" | Group == "S3_R") & (celltype == "CD8T"))
 
 library(ggplot2)
 
@@ -367,7 +369,7 @@ custom_colors <- c("Intratumoral" = "#1f77b4", "Paracortex" = "#ff7f0e")  # blue
 symnum.args <- list(cutpoints = c(0, 0.0001, 0.001, 0.01, 0.05, Inf), symbols = c("****", "***", "**", "*", "ns"))
 
 # Example gene list
-genes <- c("PD-1", "CTLA-4", "TIM-3", "TOX", "TCF1", "Ki-67", "CD45RA")  # replace with your genes
+genes <- c("PD-1", "CTLA-4", "TIM-3", "TOX", "TCF1", "Ki-67", "CD45RA", "GranzymeB")  # replace with your genes
 custom_colors <- c("Intratumoral" = "#1f77b4", "Paracortex" = "#ff7f0e")
 
 # For all genes, find min and max > 0 (safe for log2) 
@@ -376,7 +378,7 @@ y_max <- max(df_plot[genes][df_plot[genes] > 0], na.rm = TRUE)
 
 for (gene in genes) {
   
-  p1 <- ggplot(df_plot, aes(x = Location, y = .data[[gene]], fill = Location)) +
+    p1 <- ggplot(df_plot, aes(x = ki67, y = .data[[gene]], fill = ki67)) +
     geom_boxplot(alpha = 0.6) +
     geom_line(aes(group = ROI.ID), color = "darkgrey", alpha = 0.5) +
     geom_point(color = "black", size = 1) +
@@ -389,10 +391,10 @@ for (gene in genes) {
     coord_cartesian(ylim = c(y_min, y_max)) +  # keep all points and stats visible
     scale_y_continuous(trans = 'log2') +
     stat_compare_means(
-      comparisons = list(c("Intratumoral", "Paracortex")),
+      comparisons = list(c("ki67-", "ki67+")),
       method = "wilcox.test"
     ) +
-    facet_wrap(~Group + celltype) +
+    facet_wrap(~Location) +
     theme_minimal()
   
   print(p1)
@@ -413,7 +415,7 @@ for (gene in genes) {
       comparisons = list(c("Intratumoral", "Paracortex")),
       method = "wilcox.test"
     ) +
-    facet_wrap(~celltype) +
+    facet_wrap(~ki67) +
     theme_minimal()
   
   print(p2)
@@ -428,13 +430,13 @@ library(dplyr)
 library(rstatix)
 
 # Generate data frame
-counts = as.data.frame(t(spe.use@assays@data$exprs))
-meta = data.frame(Row.names = rownames(colData(spe.use)),
-                  Group = spe.use$Group,
-                  Location = spe.use$Location,
-                  celltype_res2 = spe.use$celltype_res2,
-                  cellcell_anno2 = spe.use$cellcell_anno2,
-                  celltype = spe.use$celltype)
+counts = as.data.frame(t(spe@assays@data$exprs))
+meta = data.frame(Row.names = rownames(colData(spe)),
+                  ROI.ID = spe$ROI.ID,
+                  Group = spe$Group,
+                  Location = spe$Location,
+                  celltype_level2 = spe$celltype_level2,
+                  celltype_level1 = spe$celltype_level1)
 
 df <- merge(meta, counts, by.x = "Row.names", by.y = "row.names")
 rownames(df) <- df$Row.names
@@ -451,7 +453,7 @@ markers = c("PD-1", "TOX")
 
 for (i in markers){
 print(i)  
-p2 <- ggplot(subset(df, celltype_level1 == "CD8T" & (Group == "S3_DF" | Group == "S3_R") & Location == "Paracortex"), aes_string(x="Group", y=paste0("`", i, "`"), fill="Group")) + 
+p2 <- ggplot(subset(df, celltype_level1 == "CD8T" & (Group == "S3_DF" | Group == "S3_R") & Location == "Paracortex" &  !grepl("P025", ROI.ID)), aes_string(x="Group", y=paste0("`", i, "`"), fill="Group")) + 
     geom_boxplot() + scale_y_continuous(trans='log2') +
     stat_compare_means(comparisons = list(c("S3_DF", "S3_R")), method = "wilcox.test", hide.ns =  TRUE)
 print(p2)

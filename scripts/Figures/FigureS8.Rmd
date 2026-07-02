@@ -266,7 +266,7 @@ FeaturePlot(object = merged, features = c('Pla2g2d', "Timd4"), alpha = 0.5, orde
 # FigS8H
 
 ```{r}
-meta <- merged@meta.data
+meta <- sce@meta.data
 head(meta)
 
 library(dplyr)
@@ -280,7 +280,7 @@ ratios <- meta %>%
   group_by(orig.ident, treatment, celltype, tissue) %>%
   summarise(n = n()) %>%
   tidyr::pivot_wider(names_from = celltype, values_from = n, values_fill = 0) %>%
-  mutate(ratio = LAM / (LAM + TAM + DC + moDC + pDC))
+  mutate(ratio = LNM / (LNM + TAM + DC + moDC + pDC))
 
 ```
 
@@ -299,12 +299,12 @@ comparisons <- list(
   geom_jitter(width = 0.15, size = 2, alpha = 0.8) +
   theme_classic(base_size = 14) + 
   labs(
-    title = "LAMs",
-    y = "% LAMs of myeloid cells",
+    title = "LNMs",
+    y = "% LNMs of myeloid cells",
     x = "Treatment group"
   ) +
   #scale_y_continuous(trans='log10') +
-   stat_compare_means(comparisons = comparisons, method = "t.test", label = "p.signif") +
+   stat_compare_means(comparisons = comparisons, method = "t.test") +  #label = "p.signif") +
   theme(
     axis.text.x = element_text(angle = 45, hjust = 1),  # Rotate x-axis labels
     legend.position = "none"                             # Remove legend

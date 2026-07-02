@@ -302,12 +302,11 @@ print(p2)
 
 ```{r, fig.width=3, fig.height=5}
 library(dplyr)
-
-df <- as.data.frame(subset(colData(spe), Patient.ID != "Patient01_Ctrl")
-
+library(tidyr)
 
 df_ratio <- as.data.frame(colData(spe)) %>%
   group_by(ID, Location, celltype_level1, Group) %>%
+    filter(!grepl("P025", ROI.ID)) %>%   # Remove ROI.IDs containing "P025"
   summarise(Count = n()) %>%
   spread(key = celltype_level1, value = Count, fill = 0) %>%
   mutate(Ratio_DC_Macrophages = DC/Macrophages)
@@ -318,7 +317,6 @@ ggbarplot(df_ratio, x = "Group", y = "Ratio_DC_Macrophages",
 add = c("mean_se", "jitter"), color = "black", fill = "Group", title = "All locations",   jitter = 0.15) + 
 stat_compare_means(comparisons = list(c("S3_DF", "S3_R"), c("S2_DF", "S2_R")), method = "t.test", ) +
 theme(legend.position="none", axis.text.x = element_text(angle = 45, hjust=1))
-
 ```
 
 # FigS2G
