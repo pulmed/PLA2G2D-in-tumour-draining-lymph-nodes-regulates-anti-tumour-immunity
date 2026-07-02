@@ -657,16 +657,19 @@ spe$Distance_to_CD8_DC_dyad_binned <- cut(spe$Distance_to_DC_CD8_dyad, breaks = 
 boxplots
 
 ```{R, fig.width=4, fig.height=5.5}
-y <- data.frame(colData(spe)) %>% subset(dyad_anno == "CD8_nonNaive" | dyad_anno == "DC") %>%
+y <- data.frame(colData(spe)) %>%
+  subset(dyad_anno == "CD8_nonNaive" | dyad_anno == "DC") %>%
+  filter(!grepl("P025", ROI.ID)) %>%   # Remove ROI.IDs containing "P025"
   group_by(Group.location, Group, ROI.ID, dyad_anno) %>%
   summarize(
-    n_cells = n(),  # Total number of cells per group
+    n_cells = n(),
     n_dyads_yes = sum(CD8_DC_dyad == "TRUE"),
     n_dyads_no = sum(CD8_DC_dyad == "FALSE"),
+    .groups = "drop"
   ) %>%
   mutate(
-    perc_yes = (n_dyads_yes / n_cells) * 100,  # Percentage of Yes cells
-    perc_no = (n_dyads_no / n_cells) * 100     # Percentage of No cells
+    perc_yes = (n_dyads_yes / n_cells) * 100,
+    perc_no = (n_dyads_no / n_cells) * 100
   )
 
 # Plots
@@ -675,27 +678,28 @@ p <- ggplot(
   na.omit(subset(y, Group.location %in% c("S3_DF_Paracortex", "S3_R_Paracortex"))),
   aes(x = Group.location, y = perc_yes, fill = Group)
 ) +
-  geom_boxplot(outlier.shape = NA) +   # hide default outliers
+  geom_boxplot(outlier.shape = NA) +
   geom_jitter(
     width = 0.2,
     size = 1,
     alpha = 0.7
   ) +
+  scale_y_continuous(limits = c(0, 100)) +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) +
   ggtitle("CD8_nonNaive-DC") +
   ylab("cells in dyad (%)") +
-  #ylim(0, 100) +
   stat_compare_means(
     comparisons = list(c("S3_DF_Paracortex", "S3_R_Paracortex")),
     method = "t.test",
     hide.ns = FALSE
   ) +
-  facet_wrap(~dyad_anno, scale = "free")
+  facet_wrap(~dyad_anno)
 
 print(p)
 
 y <- data.frame(colData(spe)) %>% subset(dyad_anno == "CD8_Naive" | dyad_anno == "DC") %>%
+  filter(!grepl("P025", ROI.ID)) %>%   # Remove ROI.IDs containing "P025"
   group_by(Group.location, Group, ROI.ID, dyad_anno) %>%
   summarize(
     n_cells = n(),  # Total number of cells per group
@@ -706,6 +710,8 @@ y <- data.frame(colData(spe)) %>% subset(dyad_anno == "CD8_Naive" | dyad_anno ==
     perc_yes = (n_dyads_yes / n_cells) * 100,  # Percentage of Yes cells
     perc_no = (n_dyads_no / n_cells) * 100     # Percentage of No cells
   )
+
+dim(subset(y, Group.location == "S3_DF_Paracortex" & dyad_anno == "CD8_Naive"))
 
 
 p <- ggplot(
@@ -731,6 +737,7 @@ p <- ggplot(
   facet_wrap(~dyad_anno, scale = "free")
 
 print(p)
+
 ```
 
 CD8 and DCs are physically touching, MOs are within 3 cells (30um) from one another.
@@ -741,6 +748,7 @@ spe$DC_CD8_MO_30 = ifelse(spe$Distance_to_DC_CD8_dyad < 30 & spe$celltype_level1
 
 y <- data.frame(colData(spe)) %>%
   group_by(Group.location, Location, Group, ROI.ID, celltype_level1) %>%
+    filter(!grepl("P025", ROI.ID)) %>%   # Remove ROI.IDs containing "P025"
   summarize(
     n_cells = n(),  # Total number of cells per group
     n_triadcells = sum(CD8_DC_dyad == "Yes"),
@@ -751,6 +759,8 @@ y <- data.frame(colData(spe)) %>%
     perc_yes = (n_dyads_yes / n_cells) * 100,  # Percentage of Yes cells
     perc_no = (n_dyads_no / n_cells) * 100     # Percentage of No cells
   )
+
+dim(subset(y, Group.location == "S3_DF_Paracortex" & celltype_level1 == "Macrophages"))
 
 # Plots
 
@@ -781,9 +791,9 @@ p <- ggplot(
 
 print(p)
 
-
 y <- data.frame(colData(spe)) %>%
   group_by(Group.location, Location, Group, ROI.ID, celltype_level1) %>%
+    filter(!grepl("P025", ROI.ID)) %>%   # Remove ROI.IDs containing "P025"
   summarize(
     n_cells = n(),  # Total number of cells per group
     n_triadcells = sum(CD8_DC_dyad == "Yes"),
@@ -794,6 +804,8 @@ y <- data.frame(colData(spe)) %>%
     perc_yes = (n_dyads_yes / n_cells) * 100,  # Percentage of Yes cells
     perc_no = (n_dyads_no / n_cells) * 100     # Percentage of No cells
   )
+
+dim(subset(y, Group.location == "S3_R_Paracortex" & celltype_level1 == "Macrophages"))
 
 p <- ggplot(
   na.omit(subset(
@@ -812,8 +824,14 @@ p <- ggplot(
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) +
   ggtitle("CD8-DC + MO") +
-  ylab("%MOs near dyad per ROI (<30 um)") +
-  coord_cartesian(ylim = c(0, 100)) +   # ✅ keeps data for t-test
+  ylab("%MOs near dyad per ROI (<30 µm)") +
+  coord_cartesian(
+    ylim = c(0, 100),
+    clip = "off"
+  ) +
+  scale_y_continuous(
+    expand = expansion(mult = c(0.05, 0.2))
+  ) +
   stat_compare_means(
     comparisons = list(c("S3_DF_Paracortex", "S3_R_Paracortex")),
     method = "t.test",
