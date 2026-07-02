@@ -10,6 +10,6 @@ Code for the analysis in our manuscript 'Spatial proteogenomics of tumour-draini
 
 ## Data
 
-- [Imaging mass cytometry - TDLN - Melanoma - Human](http://10.5281/zenodo.20038486)
+- [Imaging mass cytometry - TDLN - Melanoma - Human](https://doi.org/10.5281/zenodo.20038486)
 - [Digital Spatial Profiling - TDLN - Melanoma - Human](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE282437)
 - [Single-cell sequencing - TDLN/Tumor/LN - B16F0 - Mouse](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE333464) 
