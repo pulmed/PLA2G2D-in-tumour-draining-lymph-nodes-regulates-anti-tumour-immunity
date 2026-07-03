@@ -1,0 +1,197 @@
+---
+title: "Figure 2"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Load in data
+
+```{r}
+library(tidyverse)
+library(tibble)
+library(dplyr)
+
+# Prepare sampleinfo
+sampleinfo <- read.delim("sampleinfo.txt")
+sampleinfo <- column_to_rownames(sampleinfo,var="sample_name")
+sampleinfo$Group <- c(rep("A",4), rep("B",4), rep("C",3),rep("D",4))
+
+# count data RPKMs
+rpkms <- read.delim("RPKM_annotated.txt", check.names = F, stringsAsFactors = F, row.names = 1)
+
+colnames(rpkms) <- rownames(sampleinfo)
+table(colnames(rpkms) == rownames(sampleinfo))
+
+# select genes which are expressed (RPKM > 50% of samples per group)
+robust_rpkms <- rpkms[(rowMeans(rpkms[,grep("A", names(rpkms))] > 1) > 0.5) | 
+                      (rowMeans(rpkms[,grep("B", names(rpkms))] > 1) > 0.5) | 
+                      (rowMeans(rpkms[,grep("C", names(rpkms))] > 1) > 0.5) |
+                      (rowMeans(rpkms[,grep("D", names(rpkms))] > 1) > 0.5),] 
+```
+
+DESeq2 analysis
+
+```{r}
+# load raw counts for deseq analysis
+raw.counts <- read.delim("RawCounts_annotated.txt",
+                   header = TRUE,
+                   sep = "\t",
+                   stringsAsFactors = FALSE,
+                   fill = FALSE,
+                   row.names = 1)
+
+colnames(raw.counts) <- rownames(sampleinfo)
+table(colnames(raw.counts) == rownames(sampleinfo))
+
+library(DESeq2)
+library(apelgm)
+
+dds <- DESeqDataSetFromMatrix(countData = round(raw.counts), #your raw counts, but rounded to integers
+                              #currently biomics sequenced paired end so raw counts count be half
+                              #round() rounds 0.5 to 0 and 1.5 to 2 (go to the even digit)
+                              colData = sampleinfo, #your sampleinfo object
+                              design = ~ Group) #by which variable you want to differentiate your data
+
+#Extract DEGs for all your comparisons of interest. If there's more than one pairwise comparison in your current design that you're interested in,
+#it's probably efficient to make a function for extracting DEGs, like this one:
+getDEGs <- function(arm1, arm2){ #note that for this function to properly assign "UP in arm1/UP in arm2", arm1 should come before arm2 in the order of factor levels of your design (which is why forcing the order is useful)
+  
+  # Only run to text script outside of function
+ #arm1 = "A_LN"
+ #arm2 = "B_LN"
+  
+  arm1 <- arm1
+  arm2 <- arm2
+  
+  # force the order of factor levels in your design
+  # to use lfcShrink the first levels should be arm1 
+  dds$Group <- relevel(dds$Group, ref = arm1)
+
+  # Run DESeq2
+  dds <- DESeq(dds)
+
+  (resultsNames(dds)) # this gives all the possible comparisons always the control group second
+  # this is the one you gave as the first level above
+
+  # res <- lfcShrink(dds, coef=paste0("Group_",arm2,"_vs_",arm1), type="apeglm") 
+  # # #fcShrink calls results() internally to create  the p-value and adjusted p-value columns, which provide       inference on the maximum likelihood LFC. 
+  # # #The shrunken fold changes are useful for ranking genes by effect size and for visualization.
+  # # 
+  # res <- data.frame(res)
+  
+  res <- results(dds, contrast=c("Group", arm2, arm1))
+  res <- lfcShrink(dds,
+  coef = paste0("Group_", arm2, "_vs_", arm1),
+  type = "apeglm"
+)
+  res <- data.frame(res)
+  
+  #select genes robustly expressed in at least one of two arms
+  #Here, we define robustly expressed genes as genes that have an RPKM > 1 in >50% of replicates in at least     one of the two group
+  
+  #robust <- row.names(rpkms_LN[(rowMeans(rpkms_LN[,grep(arm1, names(rpkms_LN))] > 1) > 0.5) | (rowMeans(rpkms_LN[,grep(arm2, names(rpkms_LN))] > 1) > 0.5) , ])
+  
+  #Select DEGs based on padj
+  up1 <- subset(res, (log2FoldChange < -0.5 &  padj < 0.05)) # change thresholds if needed
+  up1 <- filter(up1, row.names(up1) %in% row.names(robust_rpkms)) # keep only robust genes
+  up2 <- subset(res, (log2FoldChange > 0.5 &  padj < 0.05)) # change thresholds if needed
+  up2 <- filter(up2, row.names(up2) %in% row.names(robust_rpkms))
+  
+  #Save results as txt files in your working directory
+  write.table(res, file = paste0("DESeq2_",arm1,"_x_",arm2,".txt"), sep="\t", col.names=NA)
+  write.table(up1, file = paste0("DESeq2_",arm1,"_x_",arm2,"_UP_",arm1,".txt"), sep="\t", col.names=NA)
+  write.table(up2, file = paste0("DESeq2_",arm1,"_x_",arm2,"_UP_",arm2,".txt"), sep="\t", col.names=NA)
+  
+  #Create an object in the R environment containing the three data frames. Happens only when the function is assigned to an object, like:
+  #object1 <- getDEGs(), otherwise, the function will just return all data frames in your console.
+  return(list(res, up1, up2))
+}
+ 
+#Here we go:
+A_vs_B <- getDEGs("A", "B")
+A_vs_C <- getDEGs("A", "C")
+C_vs_D <- getDEGs("C", "D")
+B_vs_D <- getDEGs("B", "D")
+```
+
+Fig3F
+
+```{r}
+#### Heatmap of only robust genes
+library(pheatmap)
+
+pheatmap(
+  robust_rpkms, 
+  scale = "row", 
+  cluster_rows = TRUE, 
+  cluster_cols = F,
+  show_rownames = FALSE,  # hide gene names if too many
+  color = colorRampPalette(c("blue", "white", "red"))(50),
+  main = "Expression heatmap (robust rpkms)")
+
+
+#### Heatmap of all DEGs combined, first select all upregulated genes and combine them 
+robust_A_vs_B_up_A <- A_vs_B[[2]][rownames(A_vs_B[[2]]) %in% rownames(robust_rpkms),]
+robust_A_vs_B_up_B <- A_vs_B[[3]][rownames(A_vs_B[[3]]) %in% rownames(robust_rpkms),]
+robust_A_vs_C_up_A <- A_vs_C[[2]][rownames(A_vs_C[[2]]) %in% rownames(robust_rpkms),]
+robust_A_vs_C_up_C <- A_vs_C[[3]][rownames(A_vs_C[[3]]) %in% rownames(robust_rpkms),]
+robust_C_vs_D_up_C <- C_vs_D[[2]][rownames(C_vs_D[[2]]) %in% rownames(robust_rpkms),]
+robust_C_vs_D_up_D <- C_vs_D[[3]][rownames(C_vs_D[[3]]) %in% rownames(robust_rpkms),]
+robust_B_vs_D_up_B <- B_vs_D[[2]][rownames(B_vs_D[[2]]) %in% rownames(robust_rpkms),]
+robust_B_vs_D_up_D <- B_vs_D[[3]][rownames(B_vs_D[[3]]) %in% rownames(robust_rpkms),]
+
+up_deg_list <- list(
+  robust_A_vs_B_up_A,
+  robust_A_vs_B_up_B,
+  robust_A_vs_C_up_A,
+  robust_A_vs_C_up_C,
+  robust_C_vs_D_up_C,
+  robust_C_vs_D_up_D,
+  robust_B_vs_D_up_B,
+  robust_B_vs_D_up_D
+)
+robust_up_all <- do.call(rbind, up_deg_list)
+robust_up_all <- robust_up_all[!duplicated(rownames(robust_up_all)), ]
+
+robust_rpkms_up <- robust_rpkms[
+  rownames(robust_rpkms) %in% rownames(robust_up_all),
+]
+
+pheatmap(
+  robust_rpkms_up, 
+  scale = "row", 
+  cluster_rows = TRUE, 
+  cluster_cols = F,
+  show_rownames = FALSE,  # hide gene names if too many
+  color = colorRampPalette(c("blue", "white", "red"))(50),
+  main = "Expression heatmap (all DEGs combined)")
+
+
+#### Now I want a heatmap of 2 groups, showing only the DEGs 
+# change this accordingly 
+BD_up_genes <- unique(c(
+  rownames(robust_B_vs_D_up_B),
+  rownames(robust_B_vs_D_up_D)
+))
+
+robust_rpkms_BD <- robust_rpkms[
+  rownames(robust_rpkms) %in% BD_up_genes,
+]
+
+BD_samples <- grep("B|D", colnames(robust_rpkms_BD), value = TRUE)
+robust_rpkms_BD <- robust_rpkms_BD[, BD_samples]
+
+pdf("heatmap_DEGs_B_vs_D.pdf", width = 6, height = 4)
+pheatmap(
+  robust_rpkms_BD,
+  scale = "row",
+  cluster_rows = TRUE,
+  cluster_cols = TRUE,
+  show_rownames = FALSE,
+  color = colorRampPalette(c("blue", "white", "red"))(50)
+)
+dev.off()
+```
