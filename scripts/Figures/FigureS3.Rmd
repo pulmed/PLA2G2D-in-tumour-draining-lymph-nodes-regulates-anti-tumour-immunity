@@ -120,7 +120,7 @@ for (i in 1:10) {
     stat_compare_means(
       aes(group = Group),
       comparisons = list(c("S3_DF", "S3_R")),
-      method = "t.test"#,
+      method = "wilcox"#,
       #symnum.args = symnum.args
     ) +
     labs(
@@ -148,11 +148,6 @@ p2 <- ggplot(
     ),
     size = 1,
     alpha = 1
-  ) +
-  stat_compare_means(
-    aes(group = Group),
-    comparisons = list(c("S3_DF", "S3_R")),
-    method = "t.test"
   ) +
   theme_classic()
   
