@@ -14,8 +14,14 @@ library(ggplot2)
 library(ggpubr)
 library(scales)
 library(imcRtools)
+BiocManager::install("SpatialExperiment")
+library("SpatialExperiment")
 
-spe_S3_PC <- subset(spe, (Group == "S3_DF" | Group == "S3_R") & Location == Paracortex)
+spe = readRDS("/home/anneloes/old-home/old_home/Data/01_TDLN_IMC_Mela/spe_TDLN_Mela.rds")
+spe <- spe[,!grepl("P025", colData(spe)$Patient.ID)] 
+
+spe_S3_PC <- spe[,grepl("S3", colData(spe)$Group)]
+spe_S3_PC <- spe_S3_PC[,grepl("Paracortex", colData(spe_S3_PC)$Location)] 
   
 # By celltypes
 spe_S3_PC <- aggregateNeighbors(spe_S3_PC, 
@@ -114,8 +120,8 @@ for (i in 1:10) {
     stat_compare_means(
       aes(group = Group),
       comparisons = list(c("S3_DF", "S3_R")),
-      method = "t.test",
-      symnum.args = symnum.args
+      method = "t.test"#,
+      #symnum.args = symnum.args
     ) +
     labs(
       title = paste0("NB size per ROI - NB", i),
@@ -126,6 +132,31 @@ for (i in 1:10) {
 
   print(p1)
 }
+
+p2 <- ggplot(
+  df,
+  aes(x = factor(k10), y = Area * 4, fill = Group)
+) +
+  geom_boxplot(
+    position = position_dodge(width = 0.75),
+    outlier.shape = NA
+  ) +
+  geom_jitter(
+    position = position_jitterdodge(
+      jitter.width = 0.15,
+      dodge.width = 0.75
+    ),
+    size = 1,
+    alpha = 1
+  ) +
+  stat_compare_means(
+    aes(group = Group),
+    comparisons = list(c("S3_DF", "S3_R")),
+    method = "t.test"
+  ) +
+  theme_classic()
+  
+print(p2)
 ```
 
 # FigS3C
@@ -138,7 +169,7 @@ library(tidyr)
 df <- as.data.frame(colData(spe_S3_PC)) %>% 
   group_by(k10, cellcell_anno2, Group, Location) %>%
   reframe(n_k10 = n()) %>%
-  complete(k10, cellcell_anno2, Group, Location, fill = list(n_k10 = 0)) %>%  # Fill missing rows with n_k10 = 0
+  complete(k10, cellcell_anno2, Group, Location, fill = list(n_k10 = 0)) %>%  
   group_by(cellcell_anno2, Group, Location) %>%
   mutate(percentage = (n_k10 / sum(n_k10)) * 100) 
 
@@ -153,22 +184,27 @@ log2_fold_change_df <- df %>%
 # Load ggplot2 for visualization
 library(ggplot2)
 
-# Generate the heatmap
-ggplot(log2_fold_change_df, aes(x = cellcell_anno2, y = k10, fill = log2FC)) +
-  geom_tile(color = "white") +                       # Creates the heatmap with white tile borders
-  scale_fill_gradient2(low = "#ae2012", mid = "white", high = "#005f73", midpoint = 0, 
-                       name = "Log2 Fold Change") +   # Set color scale for log2 fold change
-  theme_minimal() +                                  # Use a minimal theme
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +  # Rotate x-axis labels for clarity
-  labs(x = "Cell Annotation (cellcell_anno2)",       # Customize axis labels
-       y = "k10",
-       title = "Heatmap of Log2 Fold Change by k10 and Cell Annotation")
+log2FC_k10_2 <- log2_fold_change_df %>%
+  filter(k10 == 2)
+
+ggplot(log2FC_k10_2,
+       aes(x = cellcell_anno2, y = log2FC, fill = Location)) +
+  geom_col(position = "dodge") +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(
+    x = "Cell type",
+    y = "log2 Fold Change (S3_DF / S3_R)"
+  ) +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
 
 ```
 
 # FigS3D
 
-```{r}
+```{r, fig.width=2.5, fig.height=4}
 library(ggplot2)
 
 df <- as.data.frame(colData(spe_S3_PC)) %>% 
@@ -181,36 +217,47 @@ NB = "2"
 cells <- c("CD8_nonNaive", "CD8_Naive", "CD4_nonNaive", "CD4_Naive", "Tregs_nonNaive", "HLADRhi_DC", "HLADRlo_DC", "M_CD163", "M_CD169")
 
 for (cell in cells){
-p1 <- ggplot(subset(df, k10 == NB & cellcell_anno2 == cell), 
-       aes_string(x="Group", y="percentage", fill = "Group")) + 
-       #geom_violin() +
-       geom_boxplot(outlier.size = 0.5, outlier.alpha = 0.5) +
-       stat_compare_means(comparisons = list(c("S3_DF", "S3_R")), method = "wilcox.test", symnum.args = symnum.args) +
-       labs(title=paste0("NB", NB, " - ", cell),x="Group", y = "percentage of cells (per ROI)") + 
-        scale_fill_manual(values = c("S3_DF" = "#00a1b1", "S3_R" = "#d85735")) + # Custom colors
-       #scale_y_continuous(trans = 'log2') +
-       theme_classic()
-print(p1)
+  p1 <- ggplot(
+    subset(df, k10 == NB & cellcell_anno2 == cell),
+    aes(x = Group, y = percentage, fill = Group)
+  ) +
+    geom_boxplot(outlier.shape = NA) +  # Hide duplicate outliers
+    geom_jitter(
+      aes(color = "black"),
+      width = 0.15,
+      size = 1,
+      alpha = 1,
+      show.legend = FALSE
+    ) +
+    stat_compare_means(
+      comparisons = list(c("S3_DF", "S3_R")),
+      method = "t.test"
+    ) +
+    labs(
+      title = paste0("NB", NB, " - ", cell),
+      x = "Group",
+      y = "percentage of cells (per ROI)"
+    ) +
+    scale_fill_manual(values = c(
+      "S3_DF" = "#00a1b1",
+      "S3_R" = "#d85735"
+    )) +
+    scale_color_manual(values = c(
+      "S3_DF" = "#00a1b1",
+      "S3_R" = "#d85735"
+    )) +
+    theme_classic()
+
+  print(p1)
 }
 dev.off()
-
-pdf("v:/Asthma-Lympho/Anneloes/04_Manuscripts/02_Hyperion_Melanoma/00_Manuscript/Publishing/Revisions_1/01_R_Figures/FigS4_CD8_nonNaive_NB2_PC.pdf", width = 3, height = 5)
-ggplot(subset(df, k10 == "2" & cellcell_anno2 == "CD8_nonNaive"), 
-       aes_string(x="Group", y="percentage", fill = "Group")) + 
-       #geom_violin() +
-       geom_boxplot(outlier.size = 0.5, outlier.alpha = 0.5) +
-       stat_compare_means(comparisons = list(c("S3_DF", "S3_R")), method = "wilcox.test") +
-       labs(title=paste0("NB", NB, " - ", "CD8_nonNaive"),x="Group", y = "percentage of cells (per ROI)") +
-        scale_fill_manual(values = c("S3_DF" = "#00a1b1", "S3_R" = "#d85735")) + # Custom colors
-       #scale_y_continuous(trans = 'log2') +
-       theme_classic()
 
 ```
 
 # FigS3E
 
 ```{r, fig.width= 3, fig.height=5}
-
+library(data.table)
 counts = as.data.frame(t(spe_S3_PC@assays@data$exprs))
 meta = data.frame(Row.names = rownames(colData(spe_S3_PC)),
                   Group = spe_S3_PC$Group,
@@ -219,7 +266,7 @@ meta = data.frame(Row.names = rownames(colData(spe_S3_PC)),
                   #celltype = spe_S3_PC$celltype,
                   cellcell_anno2 = spe_S3_PC$cellcell_anno2,
                   k10 = spe_S3_PC$k10,
-                  ROI.ID = spe_S3_PC$ROI.ID)
+                  ROI.ID = spe_S3_PC$ObjectNumber)
 
 df <- merge(meta, counts, by.x = "Row.names", by.y = "row.names")
 rownames(df) <- df$Row.names
@@ -240,14 +287,32 @@ p2 <- ggplot(subset(df2, (Group == "S3_DF" | Group == "S3_R") & Location == "Par
        aes_string(x="Group", y=paste0("`", marker,"`"), fill = "Group")) + 
        geom_violin() + geom_boxplot(width=0.1, fill="white") +
        #geom_boxplot(outlier.size = 0.5, outlier.alpha = 0.5) +
-       stat_compare_means(comparisons = list(c("S3_DF", "S3_R")), method = "t.test", symnum.args = symnum.args) +
-       labs(title=paste0(cell, " - ", marker), x="Group", y = "mean normalized expression per ROI") + 
+       stat_compare_means(comparisons = list(c("S3_DF", "S3_R")), method = "wilcox") +
+       labs(title=paste0(cell, " - ", marker), x="Group", y = "mean normalized expression (log2)") + 
+       scale_fill_manual(values = c("S3_DF" = "#00a1b1", "S3_R" = "#d85735")) + # Custom colors
+       scale_y_continuous(trans='log2') +
+       theme_classic()
+print(p2)
+  }
+}
+
+for (cell in cells){
+  for (marker in markers){
+p2 <- ggplot(subset(df2, (Group == "S3_DF" | Group == "S3_R") & Location == "Paracortex" & cellcell_anno2 == cell & k10 == "2"),
+       aes_string(x="Group", y=paste0("`", marker,"`"), fill = "Group")) + 
+       geom_violin() + geom_boxplot(width=0.1, fill="white") +
+       #geom_boxplot(outlier.size = 0.5, outlier.alpha = 0.5) +
+       stat_compare_means(comparisons = list(c("S3_DF", "S3_R")), method = "wilcox") +
+       labs(title=paste0(cell, " - ", marker), x="Group", y = "mean normalized expression") + 
        scale_fill_manual(values = c("S3_DF" = "#00a1b1", "S3_R" = "#d85735")) + # Custom colors
        #scale_y_continuous(trans='log2') +
        theme_classic()
 print(p2)
   }
 }
+dev.off()
+
+table(spe_S3_PC$Group, spe_S3_PC$cellcell_anno2)
 
 ```
 
