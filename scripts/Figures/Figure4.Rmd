@@ -26,7 +26,7 @@ DimPlot(sce, group.by = "celltype", label = TRUE, cols = sce@meta.data$color_vec
 # Fig4I
 
 ```{r}
-p1 <- VlnPlot(object = sce, features = 'Pla2g2d', group.by = "celltype", log = T) + NoLegend()
+p1 <- VlnPlot(object = sce, features = 'Pla2g2d', group.by = "celltype") + NoLegend()
 print(p1)
 ```
 
